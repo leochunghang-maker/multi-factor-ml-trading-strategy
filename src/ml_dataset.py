@@ -1,64 +1,32 @@
-import pandas as pd
-import numpy as np
+import sys
+from pathlib import Path
 
-momentum = pd.read_csv(
-    "data/momentum_12m.csv",
-    index_col=0,
-    parse_dates=True
-)
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-mean_reversion = pd.read_csv(
-    "data/mean_reversion_1m.csv",
-    index_col=0,
-    parse_dates=True
-)
+from src.config import FORWARD_RETURNS_PATH, MEAN_REVERSION_PATH, ML_DATASET_PATH, MOMENTUM_PATH
+from src.data.io import load_factor_frame, load_price_data
+from src.features.factors import build_ml_dataset
 
-forward_returns = pd.read_csv(
-    "data/forward_returns_1m.csv",
-    index_col=0,
-    parse_dates=True
-)
 
-prices = pd.read_csv(
-    "data/price_data.csv",
-    index_col=0,
-    parse_dates=True
-)
+def main() -> None:
+    momentum = load_factor_frame(MOMENTUM_PATH)
+    mean_reversion = load_factor_frame(MEAN_REVERSION_PATH)
+    forward_returns = load_factor_frame(FORWARD_RETURNS_PATH)
+    prices = load_price_data()
 
-volatility = prices.pct_change().rolling(21).std()
+    ml_dataset = build_ml_dataset(momentum, mean_reversion, forward_returns, prices)
 
-dataset_rows = []
+    ml_dataset.to_csv(
+        ML_DATASET_PATH,
+        index=False,
+    )
 
-for date in momentum.index:
+    print("ML dataset created.")
+    print()
+    print(ml_dataset.head())
+    print()
+    print("Dataset shape:", ml_dataset.shape)
 
-    for ticker in momentum.columns:
 
-        mom = momentum.loc[date, ticker]
-        mr = mean_reversion.loc[date, ticker]
-        vol = volatility.loc[date, ticker]
-        target = forward_returns.loc[date, ticker]
-
-        if pd.notna(mom) and pd.notna(mr) and pd.notna(vol) and pd.notna(target):
-
-            dataset_rows.append({
-                "date": date,
-                "ticker": ticker,
-                "momentum_12m": mom,
-                "short_term_momentum": -mr,
-                "volatility_1m": vol,
-                "target_return_1m": target
-            })
-
-ml_dataset = pd.DataFrame(dataset_rows)
-
-ml_dataset.to_csv(
-    "data/ml_dataset.csv",
-    index=False
-)
-
-print("ML dataset created.")
-print()
-
-print(ml_dataset.head())
-print()
-print("Dataset shape:", ml_dataset.shape)
+if __name__ == "__main__":
+    main()

@@ -1,24 +1,30 @@
-import pandas as pd
-import numpy as np
+import sys
+from pathlib import Path
 
-prices = pd.read_csv(
-    "data/price_data.csv",
-    index_col=0,
-    parse_dates=True
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from src.config import (
+    DAILY_RETURNS_PATH,
+    FORWARD_RETURNS_PATH,
+    MEAN_REVERSION_PATH,
+    MOMENTUM_PATH,
 )
+from src.data.io import load_price_data
+from src.features.factors import calculate_factor_frames
 
-daily_returns = prices.pct_change()
 
-momentum_12m = prices / prices.shift(252) - 1
+def main() -> None:
+    prices = load_price_data()
+    factor_frames = calculate_factor_frames(prices)
 
-mean_reversion_1m = -(prices / prices.shift(21) - 1)
+    factor_frames["daily_returns"].to_csv(DAILY_RETURNS_PATH)
+    factor_frames["momentum_12m"].to_csv(MOMENTUM_PATH)
+    factor_frames["mean_reversion_1m"].to_csv(MEAN_REVERSION_PATH)
+    factor_frames["forward_returns_1m"].to_csv(FORWARD_RETURNS_PATH)
 
-forward_returns_1m = prices.shift(-21) / prices - 1
+    print("Factor calculations completed.")
+    print("Saved momentum_12m, mean_reversion_1m, and forward_returns_1m.")
 
-daily_returns.to_csv("data/daily_returns.csv")
-momentum_12m.to_csv("data/momentum_12m.csv")
-mean_reversion_1m.to_csv("data/mean_reversion_1m.csv")
-forward_returns_1m.to_csv("data/forward_returns_1m.csv")
 
-print("Factor calculations completed.")
-print("Saved momentum_12m, mean_reversion_1m, and forward_returns_1m.")
+if __name__ == "__main__":
+    main()

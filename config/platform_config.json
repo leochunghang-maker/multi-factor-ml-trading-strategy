@@ -1,0 +1,40 @@
+{
+  "strategy": {
+    "universe_name": "S&P 100 style large-cap universe",
+    "live_long_count": 10,
+    "features": ["momentum_12m", "short_term_momentum", "volatility_1m"],
+    "model_seed": 42
+  },
+  "execution": {
+    "mode": "local_simulated_paper_only",
+    "transaction_cost": 0.001,
+    "slippage_bps": 5.0,
+    "min_rebalance_dollars": 25.0
+  },
+  "risk_limits": {
+    "max_positions": 10,
+    "max_position_weight": 0.10,
+    "paper_allocation_buffer": 0.001,
+    "max_gross_exposure": 1.0,
+    "max_turnover": 1.0,
+    "max_drawdown_warning": -0.10,
+    "max_data_staleness_days": 5
+  },
+  "simulation": {
+    "rebalance_frequency": "monthly",
+    "starting_capital": 100000.0,
+    "rolling_window": 63
+  },
+  "monitoring": {
+    "required_files": [
+      "data/price_data.csv",
+      "results/live/latest_signals.csv",
+      "results/simulation/latest_account_snapshot.csv",
+      "results/simulation/execution_log.csv",
+      "results/reports/summary_report.csv"
+    ],
+    "status_report_path": "reports/system_status.md",
+    "structured_log_path": "results/operations/platform_events.jsonl",
+    "metadata_dir": "results/operations/run_metadata"
+  }
+}

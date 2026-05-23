@@ -1,22 +1,12 @@
-import yfinance as yf
-import pandas as pd
+import sys
 from pathlib import Path
 
-TICKERS = [
-    "AAPL", "ABBV", "ABT", "ACN", "ADBE", "AMAT", "AMD", "AMGN", "AMT", "AMZN",
-    "AVGO", "AXP", "BA", "BAC", "BK", "BKNG", "BLK", "BMY", "BRK-B", "C",
-    "CAT", "CL", "CMCSA", "COF", "COP", "COST", "CRM", "CSCO", "CVS", "CVX",
-    "DE", "DHR", "DIS", "DUK", "EMR", "FDX", "GD", "GE", "GEV", "GILD",
-    "GM", "GOOG", "GOOGL", "GS", "HD", "HON", "IBM", "INTC", "INTU", "ISRG",
-    "JNJ", "JPM", "KO", "LIN", "LLY", "LMT", "LOW", "LRCX", "MA", "MCD",
-    "MDLZ", "MDT", "META", "MMM", "MO", "MRK", "MS", "MSFT", "MU", "NEE",
-    "NFLX", "NKE", "NOW", "NVDA", "ORCL", "PEP", "PFE", "PG", "PLTR", "PM",
-    "QCOM", "RTX", "SBUX", "SCHW", "SO", "SPG", "T", "TMO", "TMUS", "TSLA",
-    "TXN", "UBER", "UNH", "UNP", "UPS", "USB", "V", "VZ", "WFC", "WMT", "XOM"
-]
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-START_DATE = "2018-01-01"
-END_DATE = "2025-12-31"
+import yfinance as yf
+
+from src.config import END_DATE, PRICE_DATA_PATH, START_DATE, TICKERS
+
 
 def download_price_data():
     Path("data").mkdir(exist_ok=True)
@@ -28,14 +18,14 @@ def download_price_data():
         start=START_DATE,
         end=END_DATE,
         auto_adjust=True,
-        progress=True
+        progress=True,
     )
 
     prices = data["Close"]
 
-    prices.to_csv("data/price_data.csv")
+    prices.to_csv(PRICE_DATA_PATH)
 
-    print("Saved price data to data/price_data.csv")
+    print(f"Saved price data to {PRICE_DATA_PATH}")
     print(prices.tail())
 
 if __name__ == "__main__":

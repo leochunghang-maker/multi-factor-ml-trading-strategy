@@ -1,0 +1,28 @@
+# Local secrets and operator-specific overrides
+.env
+.env.*
+!.env.example
+config/*.local.json
+
+# macOS and editor noise
+.DS_Store
+*.swp
+*.swo
+
+# Python cache and test cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Generated research, simulation, execution, and operational outputs
+results/
+reports/*.csv
+reports/*.json
+reports/*.jsonl
+reports/*.log
+reports/*.png
+
+# Generated model binaries and local datasets
+*.pkl
+data/*.csv
+
