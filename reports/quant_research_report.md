@@ -2,23 +2,23 @@
 
 ## Executive Summary
 
-This project implements a modular quantitative equity research pipeline for a long/short strategy across S&P 100 equities. The research combines traditional cross-sectional alpha factors, machine learning return ranking, walk-forward validation, transaction-cost-aware portfolio construction, and institutional-style risk reporting.
+This project implements a modular quantitative equity research pipeline for a long/short strategy across S&P 100 equities. The research combines traditional cross-sectional factors, machine learning return ranking, walk-forward validation, transaction-cost-aware portfolio construction, and risk reporting.
 
 The primary multi-factor strategy reports an annual return of **24.9%**, annual volatility of **21.4%**, Sharpe ratio of **1.16**, maximum drawdown of **-20.4%**, beta versus SPY of **-0.42**, and cumulative return of **196.1%** over the tested sample. The walk-forward machine learning strategy reports an annual return of **23.1%** and Sharpe ratio of **0.88**.
 
-The results are promising as a research prototype, but they should be interpreted with realistic institutional caveats: the universe is based on a modern S&P 100-style equity list, prices come from Yahoo Finance, transaction costs are simplified, and execution assumptions are idealized.
+The results are research outputs from a prototype workflow and should be interpreted with realistic caveats: the universe is based on a modern S&P 100-style equity list, prices come from Yahoo Finance, transaction costs are simplified, and execution assumptions are idealized. They are not investment promises or live-trading claims.
 
 ## Research Objective
 
-The objective is to evaluate whether simple equity factors and machine learning forecasts can produce a robust cross-sectional long/short strategy. The project is designed to demonstrate an institutional research workflow:
+The objective is to evaluate whether simple equity factors and machine learning forecasts can support a cross-sectional long/short research strategy. The project is designed to demonstrate a disciplined research workflow:
 
 - Build clean market data and factor datasets.
-- Test standalone and combined alpha signals.
+- Test standalone and combined research signals.
 - Convert signals into a transparent equal-weight long/short portfolio.
 - Evaluate out-of-sample machine learning predictions with walk-forward validation.
 - Report performance, risk, drawdown, market exposure, and turnover.
 
-The goal is not to claim production readiness. The goal is to show disciplined research structure, leakage-aware validation, and honest reporting of limitations.
+The goal is not to claim production readiness or future returns. The goal is to show disciplined research structure, leakage-aware validation, and honest reporting of limitations.
 
 ## Data Pipeline
 
@@ -123,9 +123,9 @@ The implementation uses:
 - Maximum leverage: **2.0x**.
 - A one-period lag on leverage so the current month is not sized using its own realized return.
 
-This is a realistic institutional risk control pattern, though it remains simplified because it does not model financing costs, margin constraints, borrow constraints, or intramonth risk changes.
+This is a common risk control pattern, though it remains simplified because it does not model financing costs, margin constraints, borrow constraints, or intramonth risk changes.
 
-## Institutional Realism & Limitations
+## Research Realism & Limitations
 
 ### Survivorship Bias
 
@@ -149,7 +149,7 @@ The machine learning model uses a small feature set and a simple target. Walk-fo
 
 ## Performance Metrics
 
-The main multi-factor strategy reports:
+The main multi-factor strategy research snapshot reports:
 
 | Metric | Value |
 |---|---:|
@@ -163,6 +163,14 @@ The main multi-factor strategy reports:
 | Beta vs SPY | -0.42 |
 
 The README also reports the walk-forward ML strategy at **23.1% annual return** with a **0.88 Sharpe ratio**.
+
+Result integrity note: this report is a historical research snapshot. The latest generated
+`results/reports/summary_report.md` and `results/reports/summary_report.csv` currently record a
+different regenerated summary, including annual return of **11.01%**, annual volatility of
+**25.34%**, Sharpe ratio of **0.43**, maximum drawdown of **-38.58%**, average one-way turnover of
+**120.91%**, latest turnover of **170.00%**, beta of **-0.21**, and cumulative return of
+**69.62%**. Treat the table above as a report snapshot and the generated summary files as the latest
+local output artifacts.
 
 Sharpe ratio measures annualized return per unit of annualized volatility. A higher Sharpe indicates more return for each unit of risk, but it does not capture tail risk, liquidity risk, or path dependence.
 
@@ -200,10 +208,10 @@ Turnover measures how much the portfolio changes between rebalances. The reporte
 
 ## Key Findings
 
-- The multi-factor strategy reports attractive standalone performance with **24.9% annual return**, **1.16 Sharpe**, and **-20.4% max drawdown**.
-- The walk-forward machine learning test produces lower but more realistic out-of-sample results: **23.1% annual return** and **0.88 Sharpe**.
+- The multi-factor strategy research snapshot reports positive standalone performance with **24.9% annual return**, **1.16 Sharpe**, and **-20.4% max drawdown**.
+- The walk-forward machine learning test reports lower out-of-sample research results: **23.1% annual return** and **0.88 Sharpe**.
 - The architecture now separates data, features, models, portfolio construction, backtests, risk, and reporting into reusable modules.
-- Risk analytics add a more institutional lens by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
+- Risk analytics add review context by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
 - The research remains a prototype until point-in-time constituents, more realistic trading costs, borrow assumptions, and production-grade data are added.
 
 ## Future Improvements

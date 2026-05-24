@@ -66,7 +66,7 @@ Every operational workflow saves:
 - git commit when available,
 - deterministic random seed.
 
-Reproducibility matters because an institutional process must be able to explain which data, settings, and code state produced each run.
+Reproducibility matters because a reviewable research process must be able to explain which data, settings, and code state produced each run.
 
 ## Operational Safety
 

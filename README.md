@@ -1,29 +1,54 @@
-# Institutional-Style Quantitative Trading Research Platform
+# Quantitative Trading Research and Paper-Trading Platform
 
 This repository is a modular quantitative equity research and paper-trading platform built around
 cross-sectional factor research, machine learning validation, portfolio construction, risk controls,
-execution simulation, and institutional-style reporting.
+execution simulation, and reporting.
 
-The project is designed for research defensibility and operational robustness, not for maximizing
-backtest returns. It does not enable live-money trading.
+The project is designed to demonstrate a reproducible research workflow and a local simulated
+paper-trading process. It is not a live-money trading system, and it does not enable real-money order
+execution.
 
-## Executive Summary
+## At a Glance
 
-The platform demonstrates an end-to-end quant workflow:
+- What it is: a Python research and simulated paper-trading platform for cross-sectional equity
+  strategies.
+- Why it matters: it shows how a signal moves through data preparation, validation, portfolio
+  construction, risk checks, simulated execution, reporting, and monitoring.
+- Skills demonstrated: factor research, return-label hygiene, machine learning ranking,
+  walk-forward validation, transaction-cost-aware backtesting, portfolio constraints, execution
+  simulation, dashboards, documentation, and tests.
+- Fastest local check: run `python scripts/run_smoke_tests.py` or `make smoke`.
+- Full workflow entry points: see `How to Run the Full Workflow` and `Command Shortcuts` below.
+- Safety boundary: all trading workflows are local or simulated by default; results are research
+  outputs, not investment promises.
 
-- Data ingestion and factor generation for an S&P 100-style equity universe.
-- Momentum, short-term return, volatility, and machine-learning ranking features.
-- Walk-forward model validation to reduce look-ahead bias.
-- Transaction-cost-aware portfolio construction and benchmark comparison.
-- Portfolio risk controls for exposure, concentration, turnover, liquidity, and volatility.
-- Long-only simulated paper-trading infrastructure with cash, positions, fills, rejected orders,
-  and execution logs.
-- Streamlit dashboard and Markdown/CSV reporting for institutional review.
-- Automated tests covering factor formulas, portfolio weights, broker accounting, no-shorting
-  behavior, stale-signal checks, and risk metrics.
+## Project Highlights
 
-This is suitable as a quant research and engineering portfolio project because it emphasizes
-validation quality, reproducibility, operational safety, and transparent assumptions.
+- End-to-end quant workflow covering data ingestion, factor engineering, ML ranking, walk-forward
+  validation, portfolio construction, execution simulation, and reporting.
+- Cross-sectional equity strategy using momentum, short-term return, volatility, and
+  machine-learning features across an S&P 100-style universe.
+- Transaction-cost-aware backtesting with benchmark comparison, drawdown analytics, turnover
+  tracking, and volatility-aware risk controls.
+- Long-only simulated paper-trading system with cash accounting, positions, fills, rejected orders,
+  stale-signal checks, and execution logs.
+- Portfolio constraint layer covering max weights, exposure diagnostics, concentration, turnover,
+  liquidity checks, and no-shorting behavior.
+- Streamlit dashboard, Markdown reports, CSV outputs, operational logs, configuration snapshots, and
+  automated tests for reviewability.
+- Built as a local research and simulated paper-trading platform; no live-money execution is enabled.
+
+## Recruiter Summary
+
+This project presents a quantitative research and engineering workflow in Python, with emphasis
+on defensible validation, transparent assumptions, reproducible outputs, and operational controls.
+It demonstrates practical skills relevant to quant research, systematic trading, and financial
+engineering interviews: feature design, return-label hygiene, walk-forward testing, transaction-cost
+modeling, risk management, execution simulation, monitoring, reporting, and test coverage.
+
+The repository is intentionally structured like a lightweight research platform rather
+than a single notebook. Code is modular, outputs are documented, and limitations are stated directly
+so reviewers can evaluate both the technical implementation and the research discipline behind it.
 
 ## Quick Links
 
@@ -34,15 +59,24 @@ validation quality, reproducibility, operational safety, and transparent assumpt
 - Dashboard: `dashboard/app.py`
 - Daily paper-trading runner: `scripts/run_daily_paper_trading.py`
 - Paper-trading checklist: `docs/paper_trading_checklist.md`
+- Paper-trading journal template: `docs/paper_trading_journal_template.md`
+- Paper-trading risk review: `docs/paper_trading_risk_review.md`
 - Operational workflow: `docs/operational_workflow.md`
+- Quant interview guide: `docs/quant_interview_guide.md`
 - Central configuration: `config/platform_config.json`
 
 Generated CSVs, charts, model files, execution logs, and operational JSONL logs are written under
-`results/` or generated report folders. These artifacts are intentionally ignored by Git so the
-repository stays focused on reproducible code, configuration, documentation, and lightweight report
-snapshots.
+`results/` or generated report folders. Selected report snapshots and charts are committed for
+review; regenerated artifacts and local operator outputs are ignored where practical so the
+repository stays focused on reproducible code, configuration, documentation, and lightweight evidence.
 
-## Architecture
+## System Architecture
+
+The platform is organized as a research-to-operations pipeline: market data flows into feature
+generation, model validation, portfolio construction, simulated execution, risk analytics, reporting,
+and operational monitoring.
+
+### Architecture Overview
 
 ```mermaid
 flowchart TD
@@ -55,6 +89,16 @@ flowchart TD
     G --> H["Reports & Dashboard<br/>Markdown, CSVs, charts, Streamlit"]
     H --> I["Operational Monitoring<br/>health checks, logs, metadata, config snapshots"]
 ```
+
+### Visual Output Map
+
+| Research Layer | Review Artifact |
+|---|---|
+| Strategy backtesting | `results/strategy_vs_benchmark.png`, `results/multi_factor_results.csv` |
+| Risk analytics | `results/reports/drawdown.png`, `results/reports/rolling_sharpe.png` |
+| Live signals | `results/live/latest_signals.csv` |
+| Paper trading | `results/simulation/execution_log.csv`, `reports/paper_trading_status.md` |
+| Monitoring | `results/operations/latest_system_status.json`, `reports/system_status.md` |
 
 ## Repository Structure
 
@@ -82,7 +126,7 @@ algorithmic-trading-project/
 └── README.md
 ```
 
-## How To Run
+## How to Run the Full Workflow
 
 Install dependencies:
 
@@ -90,27 +134,54 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Run the core research pipeline components:
+Run the data pipeline:
 
 ```bash
 python src/data_loader.py
 python src/factors.py
 python src/ml_dataset.py
+```
+
+Run research backtests and model validation:
+
+```bash
 python src/train_ml_model.py
+python src/train_xgboost_model.py
+python src/multi_factor_backtest.py
 python src/walk_forward_ml_backtest.py
+python src/risk_managed_backtest.py
 python src/generate_report.py
 ```
 
-Run the dashboard locally:
+Run live signal generation for the simulated paper-trading workflow:
+
+```bash
+python src/live/generate_live_signals.py
+```
+
+Run simulated paper trading:
+
+```bash
+python scripts/run_daily_paper_trading.py
+python src/simulation/run_multi_day_simulation.py
+```
+
+Run the dashboard:
 
 ```bash
 streamlit run dashboard/app.py
 ```
 
-Run the automated test suite:
+Run tests:
 
 ```bash
 pytest -q
+```
+
+Run the end-to-end smoke test runner:
+
+```bash
+python scripts/run_smoke_tests.py
 ```
 
 Run a syntax smoke test across the source tree:
@@ -118,6 +189,23 @@ Run a syntax smoke test across the source tree:
 ```bash
 python -m compileall src scripts dashboard tests
 ```
+
+## Command Shortcuts
+
+The repository includes a `Makefile` with simple reproducibility shortcuts. These commands wrap
+existing scripts only and are safe by default: they support local research, reporting, simulated
+paper trading, and dashboard review. They do not enable live-money trading.
+
+| Command | Purpose |
+|---|---|
+| `make install` | Install Python dependencies from `requirements.txt`. |
+| `make test` | Run the automated test suite with `pytest -q`. |
+| `make smoke` | Run the lightweight end-to-end smoke test runner. |
+| `make signals` | Generate the latest local paper-trading signal file. |
+| `make paper` | Run the local simulated paper-trading workflow with data refresh skipped. |
+| `make dashboard` | Start the Streamlit dashboard. |
+| `make report` | Regenerate research and risk summary reports. |
+| `make health` | Run the operational health check. |
 
 ## Paper Trading Workflow
 
@@ -186,6 +274,20 @@ The reported walk-forward schedule is:
 Forward returns are used only as labels or realized outcomes. They are not used to form live
 signals.
 
+## Quant Research Concepts Demonstrated
+
+- Factor research: momentum, short-term return, volatility, and ML-derived ranking features.
+- IC testing: rank information coefficient analysis for factor quality review.
+- Walk-forward validation: expanding-window training and out-of-sample test periods.
+- Transaction-cost-aware backtesting: turnover and cost assumptions included in strategy evaluation.
+- Volatility targeting: volatility-adjusted sizing utilities and risk-managed backtest outputs.
+- Portfolio constraints: long-only weights, max position sizing, exposure diagnostics,
+  concentration checks, and liquidity-aware controls where data is available.
+- Execution simulation: simulated broker with cash, positions, fills, slippage, transaction costs,
+  rejected orders, and paper-trading logs.
+- Operational monitoring: structured logs, run metadata, config snapshots, health reports, and stale
+  signal checks.
+
 ## Risk Controls
 
 The platform includes reusable controls and diagnostics intended to make portfolio behavior more
@@ -209,10 +311,10 @@ complete production risk system.
 
 ## Results Summary
 
-The latest committed research report, `reports/quant_research_report.md`, records the following
-backtest outputs from the existing local result set:
+The committed research report, `reports/quant_research_report.md`, records the following historical
+research snapshot:
 
-| Metric | Existing Report Value |
+| Metric | Research Report Snapshot |
 |---|---:|
 | Multi-factor annual return | 24.92% |
 | Multi-factor annual volatility | 21.43% |
@@ -229,6 +331,27 @@ These numbers are historical research outputs, not forward-looking claims. They 
 with the limitations below, especially survivorship bias, simplified transaction costs, and idealized
 execution assumptions.
 
+### Result Integrity Note
+
+The generated outputs currently in `results/reports/summary_report.md` and
+`results/reports/summary_report.csv` reflect a later regenerated summary and do not match every
+headline metric in the research-report snapshot above. The generated summary currently records:
+
+| Metric | Latest Generated Summary |
+|---|---:|
+| Annual return | 11.01% |
+| Annual volatility | 25.34% |
+| Sharpe ratio | 0.43 |
+| Max drawdown | -38.58% |
+| Average one-way turnover | 120.91% |
+| Latest turnover | 170.00% |
+| Beta | -0.21 |
+| Cumulative return | 69.62% |
+
+The current `results/multi_factor_equity_curve.csv` also ends at a cumulative value of approximately
+`1.6962`, consistent with a cumulative return near `69.62%`. Treat the headline table as a
+documented research snapshot and the generated summary files as the latest local output artifacts.
+
 The latest paper-trading status report records:
 
 | Paper-Trading Field | Existing Report Value |
@@ -243,6 +366,64 @@ The latest paper-trading status report records:
 
 The latest system health report records `WARNING` because recent execution history contains rejected
 order events. This is retained intentionally as operational memory rather than hidden.
+
+## Screenshots / Outputs
+
+### Strategy vs Benchmark
+
+![Strategy vs benchmark equity curve](results/strategy_vs_benchmark.png)
+
+### Drawdown
+
+![Strategy drawdown chart](results/reports/drawdown.png)
+
+### Rolling Sharpe
+
+![Rolling Sharpe chart](results/reports/rolling_sharpe.png)
+
+### Dashboard
+
+![Streamlit dashboard overview](docs/assets/dashboard_screenshot.png)
+
+The dashboard can be opened locally with:
+
+```bash
+streamlit run dashboard/app.py
+```
+
+Key committed outputs for GitHub review:
+
+- Strategy vs benchmark chart: [`results/strategy_vs_benchmark.png`](results/strategy_vs_benchmark.png)
+- Walk-forward ML strategy chart: [`results/walk_forward_ml_strategy.png`](results/walk_forward_ml_strategy.png)
+- Risk-managed equity curve: [`results/risk_managed_equity_curve.png`](results/risk_managed_equity_curve.png)
+- Report equity curve: [`results/reports/equity_curve.png`](results/reports/equity_curve.png)
+- Drawdown chart: [`results/reports/drawdown.png`](results/reports/drawdown.png)
+- Rolling Sharpe chart: [`results/reports/rolling_sharpe.png`](results/reports/rolling_sharpe.png)
+- Rolling volatility chart: [`results/reports/rolling_volatility.png`](results/reports/rolling_volatility.png)
+- Monthly return heatmap: [`results/reports/monthly_return_heatmap.png`](results/reports/monthly_return_heatmap.png)
+- Dashboard screenshot: [`docs/assets/dashboard_screenshot.png`](docs/assets/dashboard_screenshot.png)
+- Multi-day simulation exposure trends:
+  [`results/simulation/multi_day/exposure_trends.png`](results/simulation/multi_day/exposure_trends.png)
+- Multi-day simulation turnover trends:
+  [`results/simulation/multi_day/turnover_trends.png`](results/simulation/multi_day/turnover_trends.png)
+
+Primary written reports:
+
+- Quant research report: [`reports/quant_research_report.md`](reports/quant_research_report.md)
+- Paper-trading status: [`reports/paper_trading_status.md`](reports/paper_trading_status.md)
+- System status: [`reports/system_status.md`](reports/system_status.md)
+- Multi-day simulation report:
+  [`reports/multi_day_simulation_report.md`](reports/multi_day_simulation_report.md)
+- Generated summary report: [`results/reports/summary_report.md`](results/reports/summary_report.md)
+
+Selected data outputs:
+
+- Latest live signals: [`results/live/latest_signals.csv`](results/live/latest_signals.csv)
+- Multi-factor backtest results: [`results/multi_factor_results.csv`](results/multi_factor_results.csv)
+- Momentum IC results: [`results/momentum_ic_results.csv`](results/momentum_ic_results.csv)
+- Paper-trading execution log: [`results/simulation/execution_log.csv`](results/simulation/execution_log.csv)
+- Latest account snapshot:
+  [`results/simulation/latest_account_snapshot.csv`](results/simulation/latest_account_snapshot.csv)
 
 ## Reporting And Dashboard
 
@@ -262,9 +443,9 @@ The reporting layer produces:
 The dashboard reads from `results/`, `reports/`, execution logs, and live signal outputs. It is a
 local reporting interface and does not place trades.
 
-## Operational Robustness
+## Operational Controls
 
-Deployment-facing settings live in `config/platform_config.json`, including:
+Workflow settings live in `config/platform_config.json`, including:
 
 - Strategy parameters.
 - Transaction costs and slippage assumptions.

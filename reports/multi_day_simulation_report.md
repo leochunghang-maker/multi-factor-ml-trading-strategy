@@ -40,7 +40,7 @@ This report simulates a local paper-trading operating loop. It does not connect 
 - Long-term simulation matters because a process can work for one day and still fail after weeks of turnover, drift, missing data, and compounding cash effects.
 - Operational stability matters because paper trading is a rehearsal for data, signal, sizing, execution, and reporting controls.
 - Portfolio drift matters because market moves can push realized weights away from intended target weights between rebalances.
-- Turnover monitoring matters because excessive trading can overwhelm expected alpha with implementation costs.
+- Turnover monitoring matters because excessive trading can overwhelm expected signal edge with implementation costs.
 
 ## Outputs
 
