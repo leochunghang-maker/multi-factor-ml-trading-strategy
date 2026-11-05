@@ -473,8 +473,14 @@ python src/operations/health.py
 - Transaction costs and slippage are simplified assumptions.
 - Short borrow costs, financing costs, taxes, locates, and hard-to-borrow constraints are not fully
   modeled.
-- Intraday execution, queue position, partial fills, venue selection, and market impact are not
-  modeled.
+- Simulated fills (paper/sim only) pay fixed slippage (5 bps) + half-spread (`half_spread_bps`, 2 bps)
+  + square-root impact `impact_coefficient_bps * sqrt(notional / 63-day ADV$)` (100 bps coefficient),
+  all set in `config/platform_config.json` `execution`. Full-history monthly multi-day simulation
+  (2018-01-02 → 2026-10-30, 2220 days, 1556 trades): final NAV $435,517.54 → $422,280.95,
+  CAGR 18.19% → 17.77%, daily Sharpe 0.898 → 0.882, MDD −26.38% → −26.42%; average impact 0.42 bps
+  (max 1.33 bps) at $100k scale. Research backtests use a flat `transaction_cost` and are unchanged.
+- Intraday execution, queue position, partial fills and venue selection are not modeled; ADV uses
+  the rebalance day's own volume in its 63-day window.
 - Liquidity filtering uses `data/volume_data.csv` (Yahoo share volume). With it, the 63-day ADV
   filter (`MIN_AVERAGE_DAILY_DOLLAR_VOLUME = $25M`) is active on all 93 month-end rebalances
   (2019-01-31 → 2026-09-30); names below the threshold were flagged on 62 rebalances (max 3

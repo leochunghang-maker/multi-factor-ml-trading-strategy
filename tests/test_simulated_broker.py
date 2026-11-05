@@ -4,7 +4,7 @@ from src.execution.simulated_broker import SimulatedBroker, SimulatedOrder
 
 
 def test_simulated_broker_updates_cash_and_positions_for_buy_and_sell() -> None:
-    broker = SimulatedBroker(cash=1_000.0, transaction_cost_rate=0.01, slippage_bps=0.0)
+    broker = SimulatedBroker(cash=1_000.0, transaction_cost_rate=0.01, slippage_bps=0.0, half_spread_bps=0.0)
 
     buy = broker.process_order(
         SimulatedOrder("AAA", "BUY", quantity=5, price=100.0),

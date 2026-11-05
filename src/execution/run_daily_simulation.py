@@ -8,6 +8,8 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 import pandas as pd
 
 from src.config import (
+    IMPACT_ADV_LOOKBACK_DAYS,
+    VOLUME_DATA_PATH,
     ALLOCATION_SUMMARY_PATH,
     LIVE_SIGNALS_PATH,
     MAX_PAPER_ALLOCATION,
@@ -28,6 +30,7 @@ from src.config import (
     SIMULATED_REJECTED_ORDERS_PATH,
     SIMULATED_TRADE_HISTORY_PATH,
 )
+from src.portfolio.constraints import average_daily_dollar_volume, load_optional_volume_data
 from src.execution.simulated_broker import SimulatedBroker, SimulatedOrder, append_csv
 from src.portfolio.allocation import build_paper_target_weights, realized_vs_target_frame
 
@@ -153,7 +156,7 @@ def build_rebalance_orders(
         # slightly reduces the notional order so the account can pay both the
         # shares and the cost without borrowing.
         if gross_target_value > current_value:
-            fill_buffer = broker.transaction_cost_rate + broker.slippage_bps / 10_000
+            fill_buffer = broker.buy_fill_buffer(symbol, gross_target_value - current_value)
             target_value = gross_target_value / (1 + fill_buffer)
         else:
             target_value = gross_target_value
@@ -329,6 +332,14 @@ def run_daily_simulation() -> dict:
     prices, price_date = load_latest_prices()
     targets = load_long_only_targets()
     signal_date = validate_signal_freshness(targets, price_date)
+    volumes = load_optional_volume_data(VOLUME_DATA_PATH)
+    if volumes is not None:
+        broker.adv_dollars = average_daily_dollar_volume(
+            pd.read_csv(PRICE_DATA_PATH, index_col=0, parse_dates=True),
+            volumes,
+            pd.Timestamp(price_date),
+            IMPACT_ADV_LOOKBACK_DAYS,
+        ).dropna().to_dict()
     warnings = []
 
     starting_value = broker.portfolio_value(prices)

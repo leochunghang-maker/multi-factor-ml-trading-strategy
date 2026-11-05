@@ -10,6 +10,10 @@ import pandas as pd
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from src.config import (
+    HALF_SPREAD_BPS,
+    IMPACT_COEFFICIENT_BPS,
+    IMPACT_ADV_LOOKBACK_DAYS,
+    VOLUME_DATA_PATH,
     MAX_PAPER_ALLOCATION,
     MAX_PAPER_POSITIONS,
     MAX_PAPER_TURNOVER,
@@ -35,6 +39,7 @@ from src.config import (
     TRANSACTION_COST,
 )
 from src.data.io import load_price_data
+from src.portfolio.constraints import average_daily_dollar_volume, load_optional_volume_data
 from src.execution.simulated_broker import SimulatedBroker, SimulatedOrder
 from src.features.factors import calculate_factor_frames
 from src.operations.health import build_health_status, save_system_status_report
@@ -133,7 +138,7 @@ def build_orders(
         current_value = broker.positions.get(symbol, 0.0) * price
         target_value = portfolio_value * target_weight
         if target_value > current_value:
-            fill_buffer = broker.transaction_cost_rate + broker.slippage_bps / 10_000
+            fill_buffer = broker.buy_fill_buffer(symbol, target_value - current_value)
             target_value = target_value / (1 + fill_buffer)
         dollar_delta = target_value - current_value
         if abs(dollar_delta) < MIN_REBALANCE_DOLLARS:
@@ -256,6 +261,7 @@ def save_report(
         f"- Starting capital: {settings.starting_capital:.2f}",
         f"- Transaction cost: {settings.transaction_cost:.4%}",
         f"- Slippage: {settings.slippage_bps:.2f} bps",
+        f"- Half-spread: {HALF_SPREAD_BPS:.2f} bps; sqrt impact coefficient: {IMPACT_COEFFICIENT_BPS:.1f} bps x sqrt(notional/ADV)",
         f"- Max positions: {settings.max_positions}",
         f"- Max position weight: {settings.max_position_weight:.2%}",
         "",
@@ -337,6 +343,8 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
         slippage_bps=settings.slippage_bps,
     )
 
+    volumes = load_optional_volume_data(VOLUME_DATA_PATH)
+
     nav_rows = []
     exposure_rows = []
     turnover_rows = []
@@ -365,6 +373,10 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
             })
 
         if should_rebalance(date, previous_rebalance_date, settings.rebalance_frequency):
+            # Refresh ADV so simulated fills pay square-root market impact.
+            broker.adv_dollars = average_daily_dollar_volume(
+                full_prices, volumes, date, IMPACT_ADV_LOOKBACK_DAYS
+            ).dropna().to_dict()
             signals, signal_warnings = build_daily_signal(
                 date,
                 factors["momentum_12m"],

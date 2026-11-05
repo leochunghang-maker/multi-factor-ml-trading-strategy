@@ -186,6 +186,11 @@ MAX_SECTOR_WEIGHT = MAX_SECTOR_GROSS_EXPOSURE
 MAX_GROSS_EXPOSURE = float(_RISK.get("max_gross_exposure", 1.0))
 SIGNAL_STALENESS_DAYS = int(_RISK.get("max_data_staleness_days", 5))
 SLIPPAGE_BPS = float(_EXECUTION.get("slippage_bps", 5.0))
+# Simulated execution realism (paper/sim only): half the quoted spread is paid on
+# every fill, plus square-root market impact: impact_bps = coef * sqrt(notional / ADV$).
+HALF_SPREAD_BPS = float(_EXECUTION.get("half_spread_bps", 2.0))
+IMPACT_COEFFICIENT_BPS = float(_EXECUTION.get("impact_coefficient_bps", 100.0))
+IMPACT_ADV_LOOKBACK_DAYS = int(_EXECUTION.get("impact_adv_lookback_days", 63))
 MAX_TURNOVER = float(_RISK.get("max_turnover", 1.0))
 MAX_PAPER_TURNOVER = float(_RISK.get("max_turnover", 1.0))
 MIN_AVERAGE_DAILY_DOLLAR_VOLUME = 25_000_000.0

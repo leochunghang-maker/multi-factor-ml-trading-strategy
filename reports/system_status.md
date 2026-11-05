@@ -1,24 +1,29 @@
 # System Status
 
-- Generated at: 2026-05-23T17:29:44+00:00
-- Overall status: WARNING
+- Generated at: 2026-11-05T07:36:44+00:00
+- Overall status: ERROR
 
 ## Findings
 
-- **WARNING** `execution_status`: Recent execution log contains 18 rejected order event(s).
+- **ERROR** `missing_file`: Missing required file: results/live/latest_signals.csv
+- **ERROR** `missing_file`: Missing required file: results/simulation/latest_account_snapshot.csv
+- **ERROR** `missing_file`: Missing required file: results/simulation/execution_log.csv
+- **WARNING** `stale_data`: Latest price date 2026-10-30 is 6 days old; limit is 5.
+- **ERROR** `portfolio_state`: Latest account snapshot is missing.
+- **WARNING** `concentration`: No latest position snapshot available.
 
 ## Latest Portfolio State
 
-- Portfolio value: 113855.54
-- Cash: 1196.86
-- Positions: 10
-- Gross exposure: 98.95%
-- Net exposure: 98.95%
-- Drawdown: -0.11%
+- Portfolio value: 0.00
+- Cash: 0.00
+- Positions: 0
+- Gross exposure: 0.00%
+- Net exposure: 0.00%
+- Drawdown: 0.00%
 
 ## Latest Execution Status
 
-- Recent rejections: 18
+- Recent rejections: 0
 - Recent failures: 0
 
 ## Notes

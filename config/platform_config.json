@@ -17,7 +17,10 @@
     "mode": "local_simulated_paper_only",
     "transaction_cost": 0.001,
     "slippage_bps": 5.0,
-    "min_rebalance_dollars": 25.0
+    "min_rebalance_dollars": 25.0,
+    "half_spread_bps": 2.0,
+    "impact_coefficient_bps": 100.0,
+    "impact_adv_lookback_days": 63
   },
   "risk_limits": {
     "max_positions": 10,

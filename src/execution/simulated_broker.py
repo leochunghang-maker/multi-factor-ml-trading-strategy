@@ -5,7 +5,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.config import MAX_PAPER_ALLOCATION, SIMULATED_INITIAL_CASH, SLIPPAGE_BPS, TRANSACTION_COST
+from src.config import (
+    HALF_SPREAD_BPS,
+    IMPACT_COEFFICIENT_BPS,
+    MAX_PAPER_ALLOCATION,
+    SIMULATED_INITIAL_CASH,
+    SLIPPAGE_BPS,
+    TRANSACTION_COST,
+)
 
 
 @dataclass
@@ -23,6 +30,24 @@ class SimulatedBroker:
     positions: dict[str, float] = field(default_factory=dict)
     transaction_cost_rate: float = TRANSACTION_COST
     slippage_bps: float = SLIPPAGE_BPS
+    half_spread_bps: float = HALF_SPREAD_BPS
+    impact_coefficient_bps: float = IMPACT_COEFFICIENT_BPS
+    # Average daily dollar volume per symbol; runtime market data, not persisted.
+    adv_dollars: dict[str, float] = field(default_factory=dict)
+
+    def impact_bps(self, symbol: str, notional: float) -> float:
+        """Square-root market impact; zero when ADV is unknown."""
+        adv = self.adv_dollars.get(symbol)
+        if not adv or not math.isfinite(adv) or adv <= 0 or notional <= 0:
+            return 0.0
+        return self.impact_coefficient_bps * math.sqrt(notional / adv)
+
+    def execution_cost_bps(self, symbol: str, notional: float) -> float:
+        return self.slippage_bps + self.half_spread_bps + self.impact_bps(symbol, notional)
+
+    def buy_fill_buffer(self, symbol: str, notional: float) -> float:
+        """Fractional cash buffer so a buy can pay price drift plus fees."""
+        return self.transaction_cost_rate + self.execution_cost_bps(symbol, notional) / 10_000
 
     def validate_order(self, order: SimulatedOrder, prices: dict[str, float] | None = None) -> None:
         # Execution logs matter because paper trading is a rehearsal for real
@@ -120,10 +145,12 @@ class SimulatedBroker:
         # repairs it; it should not block buys that remain below the cap.
 
     def estimate_fill_price(self, order: SimulatedOrder) -> float:
-        slippage = self.slippage_bps / 10_000
+        # Side-aware cost: fixed slippage + half-spread + sqrt impact on the
+        # decision-price notional.
+        cost = self.execution_cost_bps(order.symbol, order.quantity * order.price) / 10_000
         if order.side == "BUY":
-            return order.price * (1 + slippage)
-        return order.price * (1 - slippage)
+            return order.price * (1 + cost)
+        return order.price * (1 - cost)
 
     def process_order(
         self,
@@ -165,6 +192,8 @@ class SimulatedBroker:
             "decision_price": order.price,
             "fill_price": fill_price,
             "slippage_bps": self.slippage_bps,
+            "half_spread_bps": self.half_spread_bps,
+            "impact_bps": self.impact_bps(order.symbol, order.quantity * order.price),
             "notional": notional,
             "transaction_cost": transaction_cost,
             "cash_after": self.cash,
@@ -236,6 +265,8 @@ class SimulatedBroker:
             "positions": self.positions,
             "transaction_cost_rate": self.transaction_cost_rate,
             "slippage_bps": self.slippage_bps,
+            "half_spread_bps": self.half_spread_bps,
+            "impact_coefficient_bps": self.impact_coefficient_bps,
         }
 
     @classmethod
@@ -245,6 +276,8 @@ class SimulatedBroker:
             positions={k: float(v) for k, v in data.get("positions", {}).items()},
             transaction_cost_rate=float(data.get("transaction_cost_rate", TRANSACTION_COST)),
             slippage_bps=float(data.get("slippage_bps", SLIPPAGE_BPS)),
+            half_spread_bps=float(data.get("half_spread_bps", HALF_SPREAD_BPS)),
+            impact_coefficient_bps=float(data.get("impact_coefficient_bps", IMPACT_COEFFICIENT_BPS)),
         )
 
     @classmethod
