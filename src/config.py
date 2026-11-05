@@ -1,3 +1,8 @@
+import json
+from copy import deepcopy
+from pathlib import Path
+from typing import Any
+
 TICKERS = [
     "AAPL", "ABBV", "ABT", "ACN", "ADBE", "AMAT", "AMD", "AMGN", "AMT", "AMZN",
     "AVGO", "AXP", "BA", "BAC", "BK", "BKNG", "BLK", "BMY", "BRK-B", "C",
@@ -11,9 +16,44 @@ TICKERS = [
     "TXN", "UBER", "UNH", "UNP", "UPS", "USB", "V", "VZ", "WFC", "WMT", "XOM",
 ]
 
-RANDOM_SEED = 42
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PLATFORM_CONFIG_PATH = "config/platform_config.json"
 LOCAL_PLATFORM_CONFIG_PATH = "config/platform_config.local.json"
+
+
+def _deep_update(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = deepcopy(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_update(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _load_platform_settings() -> dict[str, Any]:
+    """Load risk/execution/sim knobs from platform_config.json (optional local overlay).
+
+    `config/platform_config.json` is the single source of truth for deployment-facing
+    risk, execution, and simulation settings. `src/config.py` mirrors those values so
+    research and paper-trading code stay aligned without duplicating knobs.
+    """
+    default_path = _PROJECT_ROOT / PLATFORM_CONFIG_PATH
+    settings = json.loads(default_path.read_text())
+    local_path = _PROJECT_ROOT / LOCAL_PLATFORM_CONFIG_PATH
+    if local_path.exists():
+        settings = _deep_update(settings, json.loads(local_path.read_text()))
+    return settings
+
+
+_PLATFORM = _load_platform_settings()
+_STRATEGY = _PLATFORM.get("strategy", {})
+_EXECUTION = _PLATFORM.get("execution", {})
+_RISK = _PLATFORM.get("risk_limits", {})
+_SIMULATION = _PLATFORM.get("simulation", {})
+_MONITORING = _PLATFORM.get("monitoring", {})
+
+RANDOM_SEED = int(_STRATEGY.get("model_seed", 42))
 OPERATIONS_RESULTS_DIR = "results/operations"
 STRUCTURED_LOG_PATH = "results/operations/platform_events.jsonl"
 RUN_METADATA_DIR = "results/operations/run_metadata"
@@ -95,11 +135,16 @@ MULTI_DAY_TURNOVER_CHART_PATH = "results/simulation/multi_day/turnover_trends.pn
 MULTI_DAY_EXPOSURE_CHART_PATH = "results/simulation/multi_day/exposure_trends.png"
 MULTI_DAY_SIMULATION_REPORT_PATH = "reports/multi_day_simulation_report.md"
 
-FEATURES = [
+
+STRUCTURED_LOG_PATH = _MONITORING.get("structured_log_path", STRUCTURED_LOG_PATH)
+RUN_METADATA_DIR = _MONITORING.get("metadata_dir", RUN_METADATA_DIR)
+SYSTEM_STATUS_REPORT_PATH = _MONITORING.get("status_report_path", SYSTEM_STATUS_REPORT_PATH)
+
+FEATURES = list(_STRATEGY.get("features", [
     "momentum_12m",
     "short_term_momentum",
     "volatility_1m",
-]
+]))
 TARGET = "target_return_1m"
 PREDICTION_COLUMN = "predicted_return"
 MODEL_SPLIT_DATE = "2024-01-01"
@@ -114,42 +159,39 @@ MULTI_FACTOR_MIN_ASSETS = 20
 ML_LONG_COUNT = 10
 ML_SHORT_COUNT = 10
 RESEARCH_MIN_ASSETS = 10
-LIVE_LONG_COUNT = 10
+LIVE_LONG_COUNT = int(_STRATEGY.get("live_long_count", 10))
 LIVE_PRICE_LOOKBACK_PERIOD = "2y"
-MAX_PAPER_POSITIONS = 10
-MAX_PAPER_ALLOCATION = 0.10
-PAPER_ALLOCATION_BUFFER = 0.001
-MIN_REBALANCE_DOLLARS = 25.0
-SIMULATED_INITIAL_CASH = 100000.0
-MULTI_DAY_REBALANCE_FREQUENCY = "monthly"
-MULTI_DAY_STARTING_CAPITAL = 100000.0
-MULTI_DAY_ROLLING_WINDOW = 63
+MAX_PAPER_POSITIONS = int(_RISK.get("max_positions", 10))
+MAX_PAPER_ALLOCATION = float(_RISK.get("max_position_weight", 0.10))
+PAPER_ALLOCATION_BUFFER = float(_RISK.get("paper_allocation_buffer", 0.001))
+MIN_REBALANCE_DOLLARS = float(_EXECUTION.get("min_rebalance_dollars", 25.0))
+SIMULATED_INITIAL_CASH = float(_SIMULATION.get("starting_capital", 100000.0))
+MULTI_DAY_REBALANCE_FREQUENCY = str(_SIMULATION.get("rebalance_frequency", "monthly"))
+MULTI_DAY_STARTING_CAPITAL = float(_SIMULATION.get("starting_capital", 100000.0))
+MULTI_DAY_ROLLING_WINDOW = int(_SIMULATION.get("rolling_window", 63))
 
-TRANSACTION_COST = 0.001
+TRANSACTION_COST = float(_EXECUTION.get("transaction_cost", 0.001))
 BENCHMARK_SYMBOL = "SPY"
 TARGET_VOLATILITY = 0.15
 VOLATILITY_LOOKBACK = 6
 MAX_LEVERAGE = 2.0
 RISK_ANALYTICS_WINDOW = 12
 PERIODS_PER_YEAR = 12
-MAX_POSITION_WEIGHT = 0.10
-MAX_SECTOR_WEIGHT = 0.35
-MAX_GROSS_EXPOSURE = 2.0
-SIGNAL_STALENESS_DAYS = 5
-SLIPPAGE_BPS = 5.0
-MAX_TURNOVER = 1.0
-MAX_PAPER_TURNOVER = 1.0
+MAX_SINGLE_NAME_WEIGHT = float(_RISK.get("max_position_weight", 0.10))
+MAX_SECTOR_GROSS_EXPOSURE = 0.35
+MAX_POSITION_WEIGHT = MAX_SINGLE_NAME_WEIGHT
+MAX_SECTOR_WEIGHT = MAX_SECTOR_GROSS_EXPOSURE
+# platform_config.json is authoritative; keep research long/short scalable via this cap.
+MAX_GROSS_EXPOSURE = float(_RISK.get("max_gross_exposure", 1.0))
+SIGNAL_STALENESS_DAYS = int(_RISK.get("max_data_staleness_days", 5))
+SLIPPAGE_BPS = float(_EXECUTION.get("slippage_bps", 5.0))
+MAX_TURNOVER = float(_RISK.get("max_turnover", 1.0))
+MAX_PAPER_TURNOVER = float(_RISK.get("max_turnover", 1.0))
 MIN_AVERAGE_DAILY_DOLLAR_VOLUME = 25_000_000.0
 LIQUIDITY_LOOKBACK_DAYS = 63
 MAX_ADV_PARTICIPATION = 0.05
 PORTFOLIO_TRANSACTION_COST_BPS = 10.0
 PORTFOLIO_SLIPPAGE_BPS = 5.0
-
-MAX_SINGLE_NAME_WEIGHT = 0.10
-MAX_SECTOR_GROSS_EXPOSURE = 0.35
-MAX_POSITION_WEIGHT = MAX_SINGLE_NAME_WEIGHT
-MAX_SECTOR_WEIGHT = MAX_SECTOR_GROSS_EXPOSURE
-MAX_GROSS_EXPOSURE = 2.0
 ML_EMBARGO_DAYS = 21
 
 SECTOR_MAP = {
@@ -256,10 +298,11 @@ SECTOR_MAP = {
     "XOM": "Energy",
 }
 
+
 RANDOM_FOREST_PARAMS = {
     "n_estimators": 100,
     "max_depth": 5,
-    "random_state": 42,
+    "random_state": RANDOM_SEED,
     "n_jobs": -1,
 }
 
@@ -270,5 +313,5 @@ XGBOOST_PARAMS = {
     "subsample": 0.8,
     "colsample_bytree": 0.8,
     "objective": "reg:squarederror",
-    "random_state": 42,
+    "random_state": RANDOM_SEED,
 }
