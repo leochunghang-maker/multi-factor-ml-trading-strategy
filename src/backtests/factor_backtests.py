@@ -10,6 +10,7 @@ from src.config import (
     MULTI_FACTOR_LONG_COUNT,
     MULTI_FACTOR_MIN_ASSETS,
     MULTI_FACTOR_SHORT_COUNT,
+    RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
     TRANSACTION_COST,
 )
 from src.data.io import load_factor_frame
@@ -38,6 +39,7 @@ def run_momentum_backtest() -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
 
 def run_multi_factor_backtest(
     transaction_cost: float = TRANSACTION_COST,
+    gross_exposure: float = RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
 ) -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
     momentum = load_factor_frame(MOMENTUM_PATH)
     mean_reversion = load_factor_frame(MEAN_REVERSION_PATH)
@@ -51,6 +53,7 @@ def run_multi_factor_backtest(
         short_count=MULTI_FACTOR_SHORT_COUNT,
         min_assets=MULTI_FACTOR_MIN_ASSETS,
         transaction_cost=transaction_cost,
+        gross_exposure=gross_exposure,
     )
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)

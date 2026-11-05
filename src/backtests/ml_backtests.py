@@ -10,6 +10,7 @@ from src.config import (
     ML_PREDICTIONS_PATH,
     ML_SHORT_COUNT,
     PREDICTION_COLUMN,
+    RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
     WALK_FORWARD_DECILE_REPORT_PATH,
     TARGET,
     TRANSACTION_COST,
@@ -44,6 +45,7 @@ def run_prediction_backtest(
         short_count=ML_SHORT_COUNT,
         realized_returns=holding_returns,
         rebalance_on_month_ends=True,
+        gross_exposure=RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
     )
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)
@@ -119,6 +121,7 @@ def run_walk_forward_ml_backtest(
         transaction_cost=transaction_cost,
         realized_returns=holding_returns,
         rebalance_on_month_ends=True,
+        gross_exposure=RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
     )
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)

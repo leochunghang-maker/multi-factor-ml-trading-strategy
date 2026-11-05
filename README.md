@@ -339,7 +339,7 @@ costs, idealized execution).
 
 From `results/walk_forward_metrics.csv`, regenerated from Yahoo Finance prices (2018-01-02 →
 2026-10-30) with month-end rebalancing, non-overlapping month-end → next-month-end returns,
-purge/embargo of 21-day labels, and `MAX_GROSS_EXPOSURE = 1.0` from `config/platform_config.json`.
+purge/embargo of 21-day labels, and research long/short gross exposure 2.0 (100% long + 100% short, `research.long_short_gross_exposure` in `config/platform_config.json`). This is distinct from the paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`, which these research backtests do not apply.
 Sample: **2022-01-31 → 2026-09-30** (57 month-end periods).
 
 | Metric | Walk-forward ML |

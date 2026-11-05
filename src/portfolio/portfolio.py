@@ -62,11 +62,14 @@ def equal_weight_long_short_weights(
     scores: pd.Series,
     long_count: int,
     short_count: int,
+    gross_exposure: float = 2.0,
 ) -> pd.Series:
+    # gross_exposure splits evenly: gross 2.0 means 100% long and 100% short.
+    side = gross_exposure / 2
     long_stocks, short_stocks = select_long_short(scores, long_count, short_count)
     weights = pd.Series(0.0, index=scores.index)
-    weights.loc[long_stocks] = 1 / long_count
-    weights.loc[short_stocks] = -1 / short_count
+    weights.loc[long_stocks] = side / long_count
+    weights.loc[short_stocks] = -side / short_count
     return weights
 
 
@@ -184,6 +187,7 @@ def build_prediction_long_short_returns(
     transaction_cost: float = 0.0,
     realized_returns: pd.DataFrame | None = None,
     rebalance_on_month_ends: bool = True,
+    gross_exposure: float = 2.0,
 ) -> pd.DataFrame:
     """Build long/short portfolio returns from cross-sectional predictions.
 
@@ -230,10 +234,11 @@ def build_prediction_long_short_returns(
 
         long_return = long_stocks[return_column].mean()
         short_return = short_stocks[return_column].mean()
-        gross_return = long_return - short_return
+        side = gross_exposure / 2
+        gross_return = side * (long_return - short_return)
         weights = pd.Series(0.0, index=monthly_data["ticker"])
-        weights.loc[long_stocks["ticker"]] = 1 / long_count
-        weights.loc[short_stocks["ticker"]] = -1 / short_count
+        weights.loc[long_stocks["ticker"]] = side / long_count
+        weights.loc[short_stocks["ticker"]] = -side / short_count
         transaction_cost_amount, traded_gross_exposure = transaction_cost_from_weight_change(
             weights,
             previous_weights,
@@ -266,10 +271,12 @@ def build_multi_factor_long_short_returns(
     short_count: int,
     min_assets: int,
     transaction_cost: float,
+    gross_exposure: float = 2.0,
 ) -> pd.DataFrame:
     portfolio_returns = []
     monthly_dates = month_end_trading_dates(momentum)
     previous_weights = None
+    side = gross_exposure / 2
 
     for date in monthly_dates:
         mom = momentum.loc[date]
@@ -293,6 +300,7 @@ def build_multi_factor_long_short_returns(
                 composite_score,
                 long_count,
                 short_count,
+                gross_exposure=gross_exposure,
             )
             transaction_cost_amount, traded_gross_exposure = transaction_cost_from_weight_change(
                 weights,
@@ -306,12 +314,13 @@ def build_multi_factor_long_short_returns(
                 short_count,
                 transaction_cost=0.0,
             )
+            gross_return = side * row["portfolio_return"]
             portfolio_returns.append({
                 "date": date,
-                "gross_return": row["portfolio_return"],
+                "gross_return": gross_return,
                 "transaction_cost": transaction_cost_amount,
                 "traded_gross_exposure": traded_gross_exposure,
-                "portfolio_return": row["portfolio_return"] - transaction_cost_amount,
+                "portfolio_return": gross_return - transaction_cost_amount,
             })
             previous_weights = weights
 

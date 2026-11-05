@@ -2,8 +2,16 @@
   "strategy": {
     "universe_name": "S&P 100 style large-cap universe",
     "live_long_count": 10,
-    "features": ["momentum_12m", "short_term_momentum", "volatility_1m"],
+    "features": [
+      "momentum_12m",
+      "short_term_momentum",
+      "volatility_1m"
+    ],
     "model_seed": 42
+  },
+  "research": {
+    "long_short_gross_exposure": 2.0,
+    "note": "Research-only long/short backtests (multi-factor, walk-forward ML): 100% long + 100% short. Paper trading uses risk_limits.max_gross_exposure (1.0, long-only)."
   },
   "execution": {
     "mode": "local_simulated_paper_only",
@@ -13,11 +21,11 @@
   },
   "risk_limits": {
     "max_positions": 10,
-    "max_position_weight": 0.10,
+    "max_position_weight": 0.1,
     "paper_allocation_buffer": 0.001,
     "max_gross_exposure": 1.0,
     "max_turnover": 1.0,
-    "max_drawdown_warning": -0.10,
+    "max_drawdown_warning": -0.1,
     "max_data_staleness_days": 5
   },
   "simulation": {

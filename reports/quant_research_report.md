@@ -181,7 +181,7 @@ Source of truth for the multi-factor backtest in this repository checkout:
 
 From `results/walk_forward_metrics.csv`, regenerated from Yahoo Finance prices (2018-01-02 →
 2026-10-30) with month-end rebalancing, non-overlapping month-end → next-month-end returns,
-purge/embargo of 21-day labels, and `MAX_GROSS_EXPOSURE = 1.0` from `config/platform_config.json`.
+purge/embargo of 21-day labels, and research long/short gross exposure 2.0 (100% long + 100% short, `research.long_short_gross_exposure` in `config/platform_config.json`). This is distinct from the paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`, which these research backtests do not apply.
 Sample: **2022-01-31 → 2026-09-30** (57 month-end periods).
 
 | Metric | Walk-forward ML |
@@ -240,7 +240,7 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 ## Key Findings
 
 - From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **11.31% annual return**, **0.39 Sharpe**, **-39.12% max drawdown**, and **70.63% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
-- Corrected walk-forward ML (month-end, purge/embargo, gross 1.0) shows **20.24% annual return**, **0.70 Sharpe**, **-27.28% max drawdown**, **115.00% cumulative** over 2022-01-31 → 2026-09-30 (57 periods); older **23.1% / 0.88 Sharpe** figures are superseded.
+- Corrected walk-forward ML (month-end, purge/embargo, research L/S gross 2.0) shows **20.24% annual return**, **0.70 Sharpe**, **-27.28% max drawdown**, **115.00% cumulative** over 2022-01-31 → 2026-09-30 (57 periods); older **23.1% / 0.88 Sharpe** figures are superseded.
 - The architecture now separates data, features, models, portfolio construction, backtests, risk, and reporting into reusable modules.
 - Risk analytics add review context by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
 - The research remains a prototype until point-in-time constituents, more realistic trading costs, borrow assumptions, and production-grade data are added.

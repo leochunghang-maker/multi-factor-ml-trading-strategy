@@ -52,6 +52,7 @@ _EXECUTION = _PLATFORM.get("execution", {})
 _RISK = _PLATFORM.get("risk_limits", {})
 _SIMULATION = _PLATFORM.get("simulation", {})
 _MONITORING = _PLATFORM.get("monitoring", {})
+_RESEARCH = _PLATFORM.get("research", {})
 
 RANDOM_SEED = int(_STRATEGY.get("model_seed", 42))
 OPERATIONS_RESULTS_DIR = "results/operations"
@@ -193,6 +194,9 @@ MAX_ADV_PARTICIPATION = 0.05
 PORTFOLIO_TRANSACTION_COST_BPS = 10.0
 PORTFOLIO_SLIPPAGE_BPS = 5.0
 ML_EMBARGO_DAYS = 21
+# Research long/short backtests run 100% long + 100% short (gross 2.0). This is a
+# research setting only; paper trading is capped by MAX_GROSS_EXPOSURE (1.0).
+RESEARCH_LONG_SHORT_GROSS_EXPOSURE = float(_RESEARCH.get("long_short_gross_exposure", 2.0))
 
 SECTOR_MAP = {
     "AAPL": "Information Technology",
