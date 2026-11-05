@@ -78,22 +78,72 @@ def purged_embargo_year_splits(
     test_years: list[int],
     purge_months: int = 1,
     embargo_months: int = 1,
-) -> list[dict[str, pd.Timestamp]]:
+) -> list[dict[str, pd.Timestamp | int]]:
+    """Build year-based walk-forward splits with purge and embargo gaps.
+
+    Sample construction (research hygiene):
+    - Test fold = all observations whose date falls in the test calendar year.
+    - Purge: drop training rows dated after ``test_start - purge_months`` so a
+      trailing label window (e.g. 21 trading days / ~1 month) cannot overlap the
+      test period.
+    - Embargo: after the test fold ends, wait ``embargo_months`` before those
+      dates may re-enter a later training set (expanding walk-forward that only
+      trains on the past already respects this by construction).
+    """
     unique_dates = pd.Series(pd.to_datetime(dates).dropna().unique()).sort_values()
     splits = []
     for year in test_years:
         test_dates = unique_dates[unique_dates.dt.year == year]
         if test_dates.empty:
             continue
-        test_start = test_dates.min()
-        test_end = test_dates.max()
+        test_start = pd.Timestamp(test_dates.min())
+        test_end = pd.Timestamp(test_dates.max())
         train_end = test_start - pd.DateOffset(months=purge_months)
         next_train_start = test_end + pd.DateOffset(months=embargo_months)
         splits.append({
-            "test_year": year,
-            "train_end_before_purge": train_end,
+            "test_year": int(year),
+            "train_end_before_purge": pd.Timestamp(train_end),
             "test_start": test_start,
             "test_end": test_end,
-            "embargo_lift_date": next_train_start,
+            "embargo_lift_date": pd.Timestamp(next_train_start),
         })
     return splits
+
+
+def training_rows_without_label_overlap(
+    frame: pd.DataFrame,
+    date_column: str,
+    train_end_before_purge: pd.Timestamp,
+    test_start: pd.Timestamp,
+    label_horizon_days: int = 21,
+) -> pd.DataFrame:
+    """Keep training rows whose label window ends strictly before ``test_start``.
+
+    Rows after ``train_end_before_purge`` are purged. Rows whose
+    ``date + label_horizon_days`` still reaches into the test period are also
+    removed so overlapping forward-return labels cannot leak.
+    """
+    dates = pd.to_datetime(frame[date_column])
+    label_end = dates + pd.Timedelta(days=int(label_horizon_days))
+    mask = (dates <= pd.Timestamp(train_end_before_purge)) & (
+        label_end < pd.Timestamp(test_start)
+    )
+    return frame.loc[mask].copy()
+
+
+def assert_no_label_overlap(
+    train_dates: pd.Series,
+    test_start: pd.Timestamp,
+    label_horizon_days: int = 21,
+) -> None:
+    """Raise if any training label window overlaps the test period."""
+    if train_dates.empty:
+        return
+    latest_label_end = pd.to_datetime(train_dates).max() + pd.Timedelta(
+        days=int(label_horizon_days)
+    )
+    if latest_label_end >= pd.Timestamp(test_start):
+        raise AssertionError(
+            "training label window overlaps test period: "
+            f"latest_label_end={latest_label_end.date()} test_start={pd.Timestamp(test_start).date()}"
+        )

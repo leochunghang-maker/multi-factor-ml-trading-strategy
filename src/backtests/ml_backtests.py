@@ -16,7 +16,13 @@ from src.config import (
     WALK_FORWARD_TEST_YEARS,
 )
 from src.data.io import load_prediction_dataset, load_ml_dataset, load_price_data
-from src.models.validation import decile_spread_analysis, feature_stability_report
+from src.models.validation import (
+    assert_no_label_overlap,
+    decile_spread_analysis,
+    feature_stability_report,
+    purged_embargo_year_splits,
+    training_rows_without_label_overlap,
+)
 from src.models.ml import train_random_forest
 from src.portfolio import (
     build_prediction_long_short_returns,
@@ -51,16 +57,35 @@ def run_walk_forward_ml_backtest(
     test_years = test_years or WALK_FORWARD_TEST_YEARS
     yearly_predictions = []
 
-    for test_year in test_years:
+    splits = purged_embargo_year_splits(
+        df["date"],
+        test_years=test_years,
+        purge_months=1,
+        embargo_months=1,
+    )
+    for split in splits:
+        test_year = int(split["test_year"])
         print(f"Running walk-forward test for {test_year}...")
-        # Walk-forward validation trains only on dates before the test year.
-        # That keeps the model from seeing future market information.
-        test_start = pd.Timestamp(year=test_year, month=1, day=1)
-        embargo_start = test_start - pd.Timedelta(days=ML_EMBARGO_DAYS)
-        train_df = df[df["date"] < embargo_start]
-        test_df = df[df["date"].dt.year == test_year].copy()
+        # Purge training rows whose ~1m/21d label window would overlap the test
+        # fold; embargo is encoded in the split boundaries for later folds.
+        train_df = training_rows_without_label_overlap(
+            df,
+            date_column="date",
+            train_end_before_purge=split["train_end_before_purge"],
+            test_start=split["test_start"],
+            label_horizon_days=ML_EMBARGO_DAYS,
+        )
+        test_df = df[
+            (df["date"] >= split["test_start"]) & (df["date"] <= split["test_end"])
+        ].copy()
         if train_df.empty or test_df.empty:
             continue
+
+        assert_no_label_overlap(
+            train_df["date"],
+            test_start=split["test_start"],
+            label_horizon_days=ML_EMBARGO_DAYS,
+        )
 
         X_train = train_df[FEATURES]
         y_train = train_df[TARGET]
