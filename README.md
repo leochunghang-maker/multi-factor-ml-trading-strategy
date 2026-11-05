@@ -137,7 +137,8 @@ pip install -r requirements.txt
 Run the data pipeline:
 
 ```bash
-python src/data_loader.py
+python src/data_loader.py            # prices + data/volume_data.csv
+# python src/data_loader.py --volume-only  # refresh volume without touching prices
 python src/factors.py
 python src/ml_dataset.py
 ```
@@ -474,7 +475,10 @@ python src/operations/health.py
   modeled.
 - Intraday execution, queue position, partial fills, venue selection, and market impact are not
   modeled.
-- Liquidity filtering depends on volume data availability.
+- Liquidity filtering uses `data/volume_data.csv` (Yahoo share volume). With it, the 63-day ADV
+  filter (`MIN_AVERAGE_DAILY_DOLLAR_VOLUME = $25M`) is active on all 93 month-end rebalances
+  (2019-01-31 → 2026-09-30); names below the threshold were flagged on 62 rebalances (max 3
+  names). Constrained gross after renormalisation is unchanged (mean 0.9246).
 - Sector classifications are maintained locally and should be reviewed against a benchmark provider.
 - Walk-forward validation is stronger than a static split, but it does not remove all model-selection
   or research-iteration bias.
