@@ -4,7 +4,15 @@
 
 This project implements a modular quantitative equity research pipeline for a long/short strategy across S&P 100 equities. The research combines traditional cross-sectional factors, machine learning return ranking, walk-forward validation, transaction-cost-aware portfolio construction, and risk reporting.
 
-The primary multi-factor strategy reports an annual return of **24.9%**, annual volatility of **21.4%**, Sharpe ratio of **1.16**, maximum drawdown of **-20.4%**, beta versus SPY of **-0.42**, and cumulative return of **196.1%** over the tested sample. The walk-forward machine learning strategy reports an annual return of **23.1%** and Sharpe ratio of **0.88**.
+Headline multi-factor metrics in this checkout are taken from committed
+`results/multi_factor_results.csv` over **2019-01-31 → 2025-11-28**: annual return
+**11.01%**, annual volatility **25.34%**, Sharpe ratio **0.43**, maximum drawdown
+**-38.58%**, beta versus SPY about **-0.21**, and cumulative return **69.62%**
+(matching ending wealth **1.6962** in `results/multi_factor_equity_curve.csv`).
+An older narrative snapshot (Sharpe **1.16**, cumulative **196.1%**) and walk-forward
+ML figures (**23.1%** / Sharpe **0.88**) appear in earlier text of this report but are
+**not** reproduced by the committed multi-factor series; only the walk-forward chart
+`results/walk_forward_ml_strategy.png` is committed.
 
 The results are research outputs from a prototype workflow and should be interpreted with realistic caveats: the universe is based on a modern S&P 100-style equity list, prices come from Yahoo Finance, transaction costs are simplified, and execution assumptions are idealized. They are not investment promises or live-trading claims.
 
@@ -149,34 +157,42 @@ The machine learning model uses a small feature set and a simple target. Walk-fo
 
 ## Performance Metrics
 
-The main multi-factor strategy research snapshot reports:
+Source of truth for the multi-factor backtest in this repository checkout:
+`results/multi_factor_results.csv` (`portfolio_return`), sample
+**2019-01-31 → 2025-11-28** (83 month-end rows). Ending wealth in
+`results/multi_factor_equity_curve.csv` is **1.6962**.
 
-| Metric | Value |
+| Metric | Value from committed multi-factor results |
 |---|---:|
-| Annual Return | 24.92% |
-| Annual Volatility | 21.43% |
-| Sharpe Ratio | 1.16 |
-| Max Drawdown | -20.43% |
-| Cumulative Return | 196.10% |
-| Turnover | 137.41% |
-| Latest Turnover | 110.00% |
-| Beta vs SPY | -0.42 |
+| Annual Return | 11.01% |
+| Annual Volatility | 25.34% |
+| Sharpe Ratio | 0.43 |
+| Max Drawdown | -38.58% |
+| Cumulative Return | 69.62% |
+| Average One-Way Turnover | 120.91% |
+| Latest Turnover | 170.00% |
+| Beta vs SPY (rolling, latest) | -0.21 |
 
-The README also reports the walk-forward ML strategy at **23.1% annual return** with a **0.88 Sharpe ratio**.
+`make report` regenerates the same family of numbers into local
+`results/reports/summary_report.md` / `.csv` (gitignored).
 
-Result integrity note: this report is a historical research snapshot. The latest generated
-`results/reports/summary_report.md` and `results/reports/summary_report.csv` currently record a
-different regenerated summary, including annual return of **11.01%**, annual volatility of
-**25.34%**, Sharpe ratio of **0.43**, maximum drawdown of **-38.58%**, average one-way turnover of
-**120.91%**, latest turnover of **170.00%**, beta of **-0.21**, and cumulative return of
-**69.62%**. Treat the table above as a report snapshot and the generated summary files as the latest
-local output artifacts.
+### Older narrative snapshot (not current)
+
+Earlier versions of this report quoted annual return **24.92%**, volatility **21.43%**,
+Sharpe **1.16**, max drawdown **-20.43%**, cumulative return **196.10%**, turnover
+**137.41%**, latest turnover **110.00%**, beta **-0.42**, plus walk-forward ML
+**23.1%** annual return / Sharpe **0.88**. Those figures are retained here only as
+historical narrative; they are not reproduced by the committed multi-factor CSV, and no
+walk-forward metrics CSV is committed (chart only:
+`results/walk_forward_ml_strategy.png`).
 
 Sharpe ratio measures annualized return per unit of annualized volatility. A higher Sharpe indicates more return for each unit of risk, but it does not capture tail risk, liquidity risk, or path dependence.
 
 Drawdown measures the percentage decline from a prior equity high. Maximum drawdown is important because investors experience losses through the path of returns, not just through average return and volatility.
 
-![Equity Curve](../results/reports/equity_curve.png)
+![Strategy vs benchmark equity curve](../results/strategy_vs_benchmark.png)
+
+Risk charts under `results/reports/` are produced locally by `make report` and are not always present on GitHub.
 
 ## Risk Analytics
 
@@ -184,32 +200,32 @@ Drawdown measures the percentage decline from a prior equity high. Maximum drawd
 
 The drawdown chart shows how far the strategy falls below its previous peak through time. This helps identify periods of stress and recovery.
 
-![Drawdown](../results/reports/drawdown.png)
+_Drawdown chart: run `make report` to generate `results/reports/drawdown.png` locally._
 
 ### Rolling Sharpe
 
 Rolling Sharpe evaluates whether return efficiency is stable over time. A strategy with a strong full-sample Sharpe can still be unattractive if performance is concentrated in a short subperiod.
 
-![Rolling Sharpe](../results/reports/rolling_sharpe.png)
+_Rolling Sharpe chart: run `make report` to generate `results/reports/rolling_sharpe.png` locally._
 
 ### Rolling Volatility
 
 Rolling volatility measures how unstable portfolio returns are over a recent window. Rising volatility can indicate a changing market regime or increased strategy risk.
 
-![Rolling Volatility](../results/reports/rolling_volatility.png)
+_Rolling volatility chart: run `make report` to generate `results/reports/rolling_volatility.png` locally._
 
 ### Beta
 
-Beta measures sensitivity to SPY. A beta of 1.0 means the strategy tends to move like SPY, while a beta near 0.0 indicates low linear market exposure. The reported beta of **-0.42** suggests the strategy had negative estimated market sensitivity over the measured rolling window.
+Beta measures sensitivity to SPY. A beta of 1.0 means the strategy tends to move like SPY, while a beta near 0.0 indicates low linear market exposure. The latest rolling beta of about **-0.21** (from the committed multi-factor return series versus SPY) suggests negative estimated market sensitivity over the measured window.
 
 ### Turnover
 
-Turnover measures how much the portfolio changes between rebalances. The reported turnover of **137.41%** indicates meaningful monthly portfolio churn. High turnover can erode live performance once spreads, slippage, borrow fees, and market impact are modeled more completely.
+Turnover measures how much the portfolio changes between rebalances. Average one-way turnover of about **120.91%** (latest **170.00%**) indicates meaningful monthly portfolio churn. High turnover can erode live performance once spreads, slippage, borrow fees, and market impact are modeled more completely.
 
 ## Key Findings
 
-- The multi-factor strategy research snapshot reports positive standalone performance with **24.9% annual return**, **1.16 Sharpe**, and **-20.4% max drawdown**.
-- The walk-forward machine learning test reports lower out-of-sample research results: **23.1% annual return** and **0.88 Sharpe**.
+- From committed `results/multi_factor_results.csv`, the multi-factor series shows **11.01% annual return**, **0.43 Sharpe**, **-38.58% max drawdown**, and **69.62% cumulative return** over 2019-01-31 → 2025-11-28.
+- Walk-forward ML has a committed chart (`results/walk_forward_ml_strategy.png`) but no committed metrics CSV; older **23.1% / 0.88 Sharpe** narrative figures are not treated as current headline results.
 - The architecture now separates data, features, models, portfolio construction, backtests, risk, and reporting into reusable modules.
 - Risk analytics add review context by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
 - The research remains a prototype until point-in-time constituents, more realistic trading costs, borrow assumptions, and production-grade data are added.

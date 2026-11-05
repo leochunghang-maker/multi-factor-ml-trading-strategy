@@ -92,13 +92,13 @@ flowchart TD
 
 ### Visual Output Map
 
-| Research Layer | Review Artifact |
+| Research Layer | Review Artifact (committed unless noted) |
 |---|---|
 | Strategy backtesting | `results/strategy_vs_benchmark.png`, `results/multi_factor_results.csv` |
-| Risk analytics | `results/reports/drawdown.png`, `results/reports/rolling_sharpe.png` |
-| Live signals | `results/live/latest_signals.csv` |
-| Paper trading | `results/simulation/execution_log.csv`, `reports/paper_trading_status.md` |
-| Monitoring | `results/operations/latest_system_status.json`, `reports/system_status.md` |
+| Walk-forward ML chart | `results/walk_forward_ml_strategy.png` (metrics CSV not committed) |
+| Risk analytics | Generated locally by `make report` under `results/reports/` (gitignored) |
+| Paper trading status | `reports/paper_trading_status.md` |
+| Monitoring | `reports/system_status.md` |
 
 ## Repository Structure
 
@@ -311,50 +311,43 @@ complete production risk system.
 
 ## Results Summary
 
-The committed research report, `reports/quant_research_report.md`, records the following historical
-research snapshot:
+Headline multi-factor metrics below are recomputed from the committed artifact
+`results/multi_factor_results.csv` (`portfolio_return` column) using the project's
+`calculate_performance_metrics` helper. Sample window: **2019-01-31 → 2025-11-28**
+(83 month-end observations). The ending wealth level in
+`results/multi_factor_equity_curve.csv` is **1.6962**, matching the **69.62%** cumulative
+return. Regenerating with `make report` writes the same family of numbers to local
+`results/reports/summary_report.md` / `.csv` (those paths are gitignored generated outputs).
 
-| Metric | Research Report Snapshot |
-|---|---:|
-| Multi-factor annual return | 24.92% |
-| Multi-factor annual volatility | 21.43% |
-| Multi-factor Sharpe ratio | 1.16 |
-| Multi-factor max drawdown | -20.43% |
-| Multi-factor cumulative return | 196.10% |
-| Multi-factor turnover | 137.41% |
-| Latest turnover | 110.00% |
-| Beta vs SPY | -0.42 |
-| Walk-forward ML annual return | 23.1% |
-| Walk-forward ML Sharpe ratio | 0.88 |
-
-These numbers are historical research outputs, not forward-looking claims. They should be interpreted
-with the limitations below, especially survivorship bias, simplified transaction costs, and idealized
-execution assumptions.
-
-### Result Integrity Note
-
-The generated outputs currently in `results/reports/summary_report.md` and
-`results/reports/summary_report.csv` reflect a later regenerated summary and do not match every
-headline metric in the research-report snapshot above. The generated summary currently records:
-
-| Metric | Latest Generated Summary |
+| Metric | Value from `results/multi_factor_results.csv` |
 |---|---:|
 | Annual return | 11.01% |
 | Annual volatility | 25.34% |
 | Sharpe ratio | 0.43 |
 | Max drawdown | -38.58% |
+| Cumulative return | 69.62% |
 | Average one-way turnover | 120.91% |
 | Latest turnover | 170.00% |
-| Beta | -0.21 |
-| Cumulative return | 69.62% |
+| Beta vs SPY (rolling, latest) | -0.21 |
 
-The current `results/multi_factor_equity_curve.csv` also ends at a cumulative value of approximately
-`1.6962`, consistent with a cumulative return near `69.62%`. Treat the headline table as a
-documented research snapshot and the generated summary files as the latest local output artifacts.
+These are research outputs from the current committed backtest series, not forward-looking
+claims. Interpret them with the limitations below (survivorship bias, simplified transaction
+costs, idealized execution).
 
-The latest paper-trading status report records:
+### Older narrative snapshot (not reproduced by current artifacts)
 
-| Paper-Trading Field | Existing Report Value |
+`reports/quant_research_report.md` previously led with a different multi-factor snapshot
+(annual return **24.92%**, Sharpe **1.16**, cumulative return **196.10%**, beta **-0.42**,
+turnover **137.41%**) and walk-forward ML figures (**23.1%** annual return, Sharpe **0.88**).
+Those figures are **not** reproduced by the committed `results/multi_factor_results.csv` in
+this checkout, and there is no committed walk-forward metrics CSV—only the chart
+`results/walk_forward_ml_strategy.png`. Prefer the table above for current review.
+
+### Paper-trading and system status (committed reports)
+
+From `reports/paper_trading_status.md` (latest run `2026-05-23T17:29:40+00:00`):
+
+| Paper-Trading Field | Report value |
 |---|---:|
 | Portfolio value | 113855.54 |
 | Cash | 1196.86 |
@@ -364,8 +357,9 @@ The latest paper-trading status report records:
 | Trades filled | 0 |
 | Rejected orders | 0 |
 
-The latest system health report records `WARNING` because recent execution history contains rejected
-order events. This is retained intentionally as operational memory rather than hidden.
+`reports/system_status.md` (generated `2026-05-23T17:29:44+00:00`) records overall status
+`WARNING` because recent execution history contains rejected order events. This is retained
+intentionally as operational memory rather than hidden.
 
 ## Screenshots / Outputs
 
@@ -373,13 +367,9 @@ order events. This is retained intentionally as operational memory rather than h
 
 ![Strategy vs benchmark equity curve](results/strategy_vs_benchmark.png)
 
-### Drawdown
+### Walk-forward ML strategy
 
-![Strategy drawdown chart](results/reports/drawdown.png)
-
-### Rolling Sharpe
-
-![Rolling Sharpe chart](results/reports/rolling_sharpe.png)
+![Walk-forward ML strategy equity curve](results/walk_forward_ml_strategy.png)
 
 ### Dashboard
 
@@ -391,21 +381,14 @@ The dashboard can be opened locally with:
 streamlit run dashboard/app.py
 ```
 
-Key committed outputs for GitHub review:
+Key **committed** outputs for GitHub review:
 
 - Strategy vs benchmark chart: [`results/strategy_vs_benchmark.png`](results/strategy_vs_benchmark.png)
 - Walk-forward ML strategy chart: [`results/walk_forward_ml_strategy.png`](results/walk_forward_ml_strategy.png)
-- Risk-managed equity curve: [`results/risk_managed_equity_curve.png`](results/risk_managed_equity_curve.png)
-- Report equity curve: [`results/reports/equity_curve.png`](results/reports/equity_curve.png)
-- Drawdown chart: [`results/reports/drawdown.png`](results/reports/drawdown.png)
-- Rolling Sharpe chart: [`results/reports/rolling_sharpe.png`](results/reports/rolling_sharpe.png)
-- Rolling volatility chart: [`results/reports/rolling_volatility.png`](results/reports/rolling_volatility.png)
-- Monthly return heatmap: [`results/reports/monthly_return_heatmap.png`](results/reports/monthly_return_heatmap.png)
+- Multi-factor backtest results: [`results/multi_factor_results.csv`](results/multi_factor_results.csv)
+- Multi-factor equity curve levels: [`results/multi_factor_equity_curve.csv`](results/multi_factor_equity_curve.csv)
+- Momentum IC results: [`results/momentum_ic_results.csv`](results/momentum_ic_results.csv)
 - Dashboard screenshot: [`docs/assets/dashboard_screenshot.png`](docs/assets/dashboard_screenshot.png)
-- Multi-day simulation exposure trends:
-  [`results/simulation/multi_day/exposure_trends.png`](results/simulation/multi_day/exposure_trends.png)
-- Multi-day simulation turnover trends:
-  [`results/simulation/multi_day/turnover_trends.png`](results/simulation/multi_day/turnover_trends.png)
 
 Primary written reports:
 
@@ -414,16 +397,14 @@ Primary written reports:
 - System status: [`reports/system_status.md`](reports/system_status.md)
 - Multi-day simulation report:
   [`reports/multi_day_simulation_report.md`](reports/multi_day_simulation_report.md)
-- Generated summary report: [`results/reports/summary_report.md`](results/reports/summary_report.md)
 
-Selected data outputs:
+Local-only generated paths (produced by `make report`, paper-trading, or simulation runners;
+listed under `results/` in `.gitignore`, so they are not guaranteed on GitHub):
 
-- Latest live signals: [`results/live/latest_signals.csv`](results/live/latest_signals.csv)
-- Multi-factor backtest results: [`results/multi_factor_results.csv`](results/multi_factor_results.csv)
-- Momentum IC results: [`results/momentum_ic_results.csv`](results/momentum_ic_results.csv)
-- Paper-trading execution log: [`results/simulation/execution_log.csv`](results/simulation/execution_log.csv)
-- Latest account snapshot:
-  [`results/simulation/latest_account_snapshot.csv`](results/simulation/latest_account_snapshot.csv)
+- `results/reports/summary_report.md`, `summary_report.csv`, drawdown / rolling Sharpe charts
+- `results/live/latest_signals.csv`
+- `results/simulation/execution_log.csv`, `latest_account_snapshot.csv`
+- `results/simulation/multi_day/` charts and histories
 
 ## Reporting And Dashboard
 
