@@ -291,6 +291,7 @@ signals.
   signal checks.
 
 ## Risk Controls
+- Drawdown halt (paper/sim): when portfolio drawdown reaches `risk_limits.max_drawdown_warning` (default **-10%**), the paper/sim rebalance is **skipped** (book frozen) so the process does not add risk or rotate into cash during the breach. Health monitoring emits a WARNING at the same threshold.
 
 The platform includes reusable controls and diagnostics intended to make portfolio behavior more
 auditable:
@@ -476,9 +477,10 @@ python src/operations/health.py
 - Simulated fills (paper/sim only) pay fixed slippage (5 bps) + half-spread (`half_spread_bps`, 2 bps)
   + square-root impact `impact_coefficient_bps * sqrt(notional / 63-day ADV$)` (100 bps coefficient),
   all set in `config/platform_config.json` `execution`. Full-history monthly multi-day simulation
-  (2018-01-02 → 2026-10-30, 2220 days, 1556 trades): final NAV $435,517.54 → $422,280.95,
-  CAGR 18.19% → 17.77%, daily Sharpe 0.898 → 0.882, MDD −26.38% → −26.42%; average impact 0.42 bps
-  (max 1.33 bps) at $100k scale. Research backtests use a flat `transaction_cost` and are unchanged.
+  with drawdown halt (skip rebalance at/below −10%; 2018-01-02 → 2026-10-30, 2220 days, 1391 trades,
+  10 DRAWDOWN_HALT events): final NAV **$459,706.56**, CAGR **18.91%**, daily Sharpe **0.928**,
+  MDD **−26.42%** at $100k scale. Prior no-halt run was final NAV $422,280.95 / CAGR 17.77% /
+  Sharpe 0.882. Research backtests use a flat `transaction_cost` and are unchanged.
 - Intraday execution, queue position, partial fills and venue selection are not modeled; ADV uses
   the rebalance day's own volume in its 63-day window.
 - Liquidity filtering uses `data/volume_data.csv` (Yahoo share volume). With it, the 63-day ADV
@@ -496,6 +498,7 @@ python src/operations/health.py
 The test suite focuses on correctness and safety:
 
 - Factor formula calculations.
+- Drawdown circuit-breaker helpers and config agreement.
 - Portfolio weight construction.
 - Max-position constraints.
 - Long-only and no-shorting behavior.

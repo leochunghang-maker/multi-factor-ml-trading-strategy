@@ -11,32 +11,34 @@ This report simulates a local paper-trading operating loop. It does not connect 
 - Half-spread: 2.00 bps; sqrt impact coefficient: 100.0 bps x sqrt(notional/ADV)
 - Max positions: 10
 - Max position weight: 10.00%
+- Drawdown halt (skip rebalance at/below): -10.00%
 
 ## Latest State
 
 - Latest date: 2026-10-30 00:00:00
-- Portfolio value: 422280.95
-- Cash: 4124.75
-- Drawdown: -21.36%
-- Gross exposure: 99.02%
-- Net exposure: 99.02%
-- Rolling Sharpe: -1.954
-- Rolling beta: 0.454
+- Portfolio value: 459706.56
+- Cash: 4712.83
+- Drawdown: -18.08%
+- Gross exposure: 98.97%
+- Net exposure: 98.97%
+- Rolling Sharpe: -1.892
+- Rolling beta: 0.792
 
 ## Stability Metrics
 
 - Total simulated days: 2220
-- Total trades: 1556
-- Warning count: 1774
-- Average daily turnover: 0.0562
+- Total trades: 1391
+- Warning count: 1841
+- Average daily turnover: 0.0503
 - Average gross exposure: 87.86%
-- Return volatility: 21.09%
+- Return volatility: 21.05%
 
 ## Warning Breakdown
 
-- CONCENTRATION: 1115
-- EXCESSIVE_TURNOVER: 77
-- POSITION_COUNT_LIMIT: 78
+- CONCENTRATION: 1178
+- DRAWDOWN_HALT: 10
+- EXCESSIVE_TURNOVER: 69
+- POSITION_COUNT_LIMIT: 80
 - SIGNAL_WARNING: 252
 - STALE_SIGNAL: 252
 

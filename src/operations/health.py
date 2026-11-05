@@ -90,7 +90,7 @@ def check_latest_snapshot(config: dict[str, Any]) -> tuple[list[HealthFinding], 
     if turnover > max_turnover + 1e-9:
         findings.append(HealthFinding("WARNING", "turnover", f"Turnover {turnover:.2%} exceeds {max_turnover:.2%}."))
     if drawdown < max_drawdown:
-        findings.append(HealthFinding("WARNING", "drawdown", f"Drawdown {drawdown:.2%} exceeds warning threshold {max_drawdown:.2%}."))
+        findings.append(HealthFinding("WARNING", "drawdown", f"Drawdown {drawdown:.2%} exceeds warning threshold {max_drawdown:.2%} (paper/sim skips rebalance / freezes the book while halted)."))
     return findings, latest
 
 

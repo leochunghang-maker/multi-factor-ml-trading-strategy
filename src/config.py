@@ -193,6 +193,9 @@ IMPACT_COEFFICIENT_BPS = float(_EXECUTION.get("impact_coefficient_bps", 100.0))
 IMPACT_ADV_LOOKBACK_DAYS = int(_EXECUTION.get("impact_adv_lookback_days", 63))
 MAX_TURNOVER = float(_RISK.get("max_turnover", 1.0))
 MAX_PAPER_TURNOVER = float(_RISK.get("max_turnover", 1.0))
+# Paper/sim circuit breaker: when portfolio drawdown falls to or below this
+# (negative) fraction, new buys are halted; sells may still reduce risk.
+MAX_DRAWDOWN_WARNING = float(_RISK.get("max_drawdown_warning", -0.1))
 MIN_AVERAGE_DAILY_DOLLAR_VOLUME = 25_000_000.0
 LIQUIDITY_LOOKBACK_DAYS = 63
 MAX_ADV_PARTICIPATION = 0.05

@@ -12,6 +12,7 @@ from src.config import (
     VOLUME_DATA_PATH,
     ALLOCATION_SUMMARY_PATH,
     LIVE_SIGNALS_PATH,
+    MAX_DRAWDOWN_WARNING,
     MAX_PAPER_ALLOCATION,
     MAX_PAPER_POSITIONS,
     MAX_PAPER_TURNOVER,
@@ -33,6 +34,7 @@ from src.config import (
 from src.portfolio.constraints import average_daily_dollar_volume, load_optional_volume_data
 from src.execution.simulated_broker import SimulatedBroker, SimulatedOrder, append_csv
 from src.portfolio.allocation import build_paper_target_weights, realized_vs_target_frame
+from src.risk.drawdown import is_drawdown_halted
 
 
 def configure_logging() -> None:
@@ -302,6 +304,7 @@ def save_paper_trading_status_report(
         f"- Number of positions: {int(snapshot.get('number_of_positions', 0))}",
         f"- Turnover: {float(snapshot.get('turnover', 0.0)):.4f}",
         f"- Drawdown: {float(snapshot.get('drawdown', 0.0)):.2%}",
+        f"- Drawdown halt active: {bool(snapshot.get('drawdown_halted', False))}",
         f"- Trades filled: {int(snapshot.get('trades_filled', 0))}",
         f"- Rejected orders: {int(snapshot.get('orders_rejected', 0))}",
         "",
@@ -343,6 +346,11 @@ def run_daily_simulation() -> dict:
     warnings = []
 
     starting_value = broker.portfolio_value(prices)
+    # Drawdown is measured against the running peak in portfolio history before
+    # this rebalance. Once it breaches the configured warning threshold, new
+    # buys are halted so paper/sim does not add risk into a deep drawdown.
+    pre_trade_drawdown = calculate_portfolio_drawdown(starting_value)
+    drawdown_halted = is_drawdown_halted(pre_trade_drawdown, MAX_DRAWDOWN_WARNING)
     orders, execution_logs, target_weights, allocation_diagnostics = build_rebalance_orders(
         broker,
         targets,
@@ -350,6 +358,22 @@ def run_daily_simulation() -> dict:
         starting_value,
         run_timestamp,
     )
+    if drawdown_halted:
+        skipped = len(orders)
+        orders = []
+        warnings.append(
+            f"DRAWDOWN_HALT: drawdown {pre_trade_drawdown:.2%} at/below "
+            f"{MAX_DRAWDOWN_WARNING:.2%}; skipped rebalance ({skipped} order(s))."
+        )
+        execution_logs.append({
+            "timestamp": run_timestamp,
+            "symbol": "PORTFOLIO",
+            "event": "DRAWDOWN_HALT",
+            "message": (
+                f"drawdown={pre_trade_drawdown:.6f}, threshold={MAX_DRAWDOWN_WARNING:.6f}, "
+                f"skipped_orders={skipped}"
+            ),
+        })
 
     trade_rows = []
     rejected_rows = []

@@ -14,6 +14,7 @@ from src.config import (
     IMPACT_COEFFICIENT_BPS,
     IMPACT_ADV_LOOKBACK_DAYS,
     VOLUME_DATA_PATH,
+    MAX_DRAWDOWN_WARNING,
     MAX_PAPER_ALLOCATION,
     MAX_PAPER_POSITIONS,
     MAX_PAPER_TURNOVER,
@@ -46,6 +47,7 @@ from src.operations.health import build_health_status, save_system_status_report
 from src.operations.structured_logging import log_event
 from src.operations.metadata import create_run_metadata, set_deterministic_seed
 from src.portfolio.allocation import build_paper_target_weights, normalize_long_only_weights
+from src.risk.drawdown import is_drawdown_halted, portfolio_drawdown
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,7 @@ class SimulationSettings:
     max_position_weight: float = MAX_PAPER_ALLOCATION
     allocation_buffer: float = PAPER_ALLOCATION_BUFFER
     max_turnover: float = MAX_PAPER_TURNOVER
+    max_drawdown_warning: float = MAX_DRAWDOWN_WARNING
     starting_capital: float = MULTI_DAY_STARTING_CAPITAL
     rolling_window: int = MULTI_DAY_ROLLING_WINDOW
 
@@ -264,6 +267,7 @@ def save_report(
         f"- Half-spread: {HALF_SPREAD_BPS:.2f} bps; sqrt impact coefficient: {IMPACT_COEFFICIENT_BPS:.1f} bps x sqrt(notional/ADV)",
         f"- Max positions: {settings.max_positions}",
         f"- Max position weight: {settings.max_position_weight:.2%}",
+        f"- Drawdown halt (skip rebalance at/below): {settings.max_drawdown_warning:.2%}",
         "",
         "## Latest State",
         "",
@@ -352,6 +356,7 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
     warning_rows = []
     previous_value = settings.starting_capital
     previous_rebalance_date = None
+    peak_value = settings.starting_capital
 
     for date in prices.index:
         price_row = prices.loc[date].dropna()
@@ -371,6 +376,10 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
                 "type": "MISSING_POSITION_PRICE",
                 "message": ",".join(missing_position_prices),
             })
+
+        peak_value = max(peak_value, portfolio_start)
+        current_drawdown = portfolio_drawdown(portfolio_start, peak_value)
+        drawdown_halted = is_drawdown_halted(current_drawdown, settings.max_drawdown_warning)
 
         if should_rebalance(date, previous_rebalance_date, settings.rebalance_frequency):
             # Refresh ADV so simulated fills pay square-root market impact.
@@ -411,6 +420,20 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
                         "message": f"Target book pruned to {settings.max_positions} positions after turnover adjustment.",
                     })
                 orders = build_orders(broker, target_weights, price_dict, portfolio_start, date.isoformat())
+                if drawdown_halted:
+                    # Freeze the book: skip the whole rebalance rather than allowing
+                    # sells-without-buys, which would rotate the portfolio into cash
+                    # and miss the recovery. New risk is not added while halted.
+                    warning_rows.append({
+                        "date": date,
+                        "type": "DRAWDOWN_HALT",
+                        "message": (
+                            f"Drawdown {current_drawdown:.2%} at/below "
+                            f"{settings.max_drawdown_warning:.2%}; "
+                            f"skipped rebalance ({len(orders)} order(s) not sent)."
+                        ),
+                    })
+                    orders = []
                 for order in orders:
                     try:
                         trade = broker.process_order(
