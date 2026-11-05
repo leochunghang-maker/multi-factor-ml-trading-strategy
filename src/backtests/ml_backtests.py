@@ -15,10 +15,13 @@ from src.config import (
     TRANSACTION_COST,
     WALK_FORWARD_TEST_YEARS,
 )
-from src.data.io import load_prediction_dataset, load_ml_dataset
+from src.data.io import load_prediction_dataset, load_ml_dataset, load_price_data
 from src.models.validation import decile_spread_analysis, feature_stability_report
 from src.models.ml import train_random_forest
-from src.portfolio import build_prediction_long_short_returns
+from src.portfolio import (
+    build_prediction_long_short_returns,
+    month_end_holding_period_returns,
+)
 from src.reporting.metrics import calculate_performance_metrics, equity_curve
 
 
@@ -26,12 +29,15 @@ def run_prediction_backtest(
     predictions_path: str = ML_PREDICTIONS_PATH,
 ) -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
     predictions = load_prediction_dataset(predictions_path)
+    holding_returns = month_end_holding_period_returns(load_price_data())
     results = build_prediction_long_short_returns(
         predictions,
         score_column=PREDICTION_COLUMN,
         target_column=TARGET,
         long_count=ML_LONG_COUNT,
         short_count=ML_SHORT_COUNT,
+        realized_returns=holding_returns,
+        rebalance_on_month_ends=True,
     )
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)
@@ -76,6 +82,9 @@ def run_walk_forward_ml_backtest(
         date_column="date",
         feature_columns=FEATURES,
     ).to_csv(FEATURE_STABILITY_REPORT_PATH, index=False)
+    # Month-end rebalances with month-end→next-month-end holding returns so
+    # overlapping daily 21-day labels are not compounded as independent periods.
+    holding_returns = month_end_holding_period_returns(load_price_data())
     results = build_prediction_long_short_returns(
         predictions,
         score_column=PREDICTION_COLUMN,
@@ -83,6 +92,8 @@ def run_walk_forward_ml_backtest(
         long_count=ML_LONG_COUNT,
         short_count=ML_SHORT_COUNT,
         transaction_cost=transaction_cost,
+        realized_returns=holding_returns,
+        rebalance_on_month_ends=True,
     )
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)

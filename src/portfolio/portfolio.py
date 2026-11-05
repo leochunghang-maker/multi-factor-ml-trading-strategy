@@ -14,6 +14,17 @@ def month_end_trading_dates(frame: pd.DataFrame | pd.Series) -> pd.DatetimeIndex
     )
 
 
+
+def month_end_holding_period_returns(prices: pd.DataFrame) -> pd.DataFrame:
+    """Non-overlapping returns from each month-end to the next month-end.
+
+    Indexed by the rebalance (entry) date. The final month-end has no forward
+    holding period and is therefore NaN.
+    """
+    monthly_prices = prices.loc[month_end_trading_dates(prices)].sort_index()
+    return monthly_prices.shift(-1) / monthly_prices - 1
+
+
 def select_long_short(
     scores: pd.Series,
     long_count: int,
@@ -171,17 +182,54 @@ def build_prediction_long_short_returns(
     long_count: int,
     short_count: int,
     transaction_cost: float = 0.0,
+    realized_returns: pd.DataFrame | None = None,
+    rebalance_on_month_ends: bool = True,
 ) -> pd.DataFrame:
+    """Build long/short portfolio returns from cross-sectional predictions.
+
+    By default portfolios are formed only on month-end trading dates and P&L uses
+    non-overlapping holding-period returns (month-end to next month-end) when a
+    realized_returns panel is supplied. This avoids treating overlapping daily
+    forward-return labels as independent period returns.
+    """
+    frame = predictions.copy()
+    frame["date"] = pd.to_datetime(frame["date"])
+    unique_dates = pd.DatetimeIndex(sorted(frame["date"].unique()))
+    if rebalance_on_month_ends:
+        rebalance_dates = month_end_trading_dates(pd.Series(0.0, index=unique_dates))
+    else:
+        rebalance_dates = unique_dates
+
     portfolio_returns = []
     previous_weights = None
 
-    for date in sorted(predictions["date"].unique()):
-        monthly_data = predictions[predictions["date"] == date]
+    for date in rebalance_dates:
+        monthly_data = frame[frame["date"] == date]
+        if monthly_data.empty:
+            continue
+
+        if realized_returns is not None:
+            if date not in realized_returns.index:
+                continue
+            realized = realized_returns.loc[date].reindex(monthly_data["ticker"].values)
+            monthly_data = monthly_data.assign(_realized_return=realized.values)
+            return_column = "_realized_return"
+            if monthly_data[return_column].isna().all():
+                continue
+            monthly_data = monthly_data.dropna(subset=[return_column, score_column])
+            if monthly_data.empty:
+                continue
+        else:
+            return_column = target_column
+            monthly_data = monthly_data.dropna(subset=[return_column, score_column])
+            if monthly_data.empty:
+                continue
+
         long_stocks = monthly_data.nlargest(long_count, score_column)
         short_stocks = monthly_data.nsmallest(short_count, score_column)
 
-        long_return = long_stocks[target_column].mean()
-        short_return = short_stocks[target_column].mean()
+        long_return = long_stocks[return_column].mean()
+        short_return = short_stocks[return_column].mean()
         gross_return = long_return - short_return
         weights = pd.Series(0.0, index=monthly_data["ticker"])
         weights.loc[long_stocks["ticker"]] = 1 / long_count
@@ -203,6 +251,8 @@ def build_prediction_long_short_returns(
         previous_weights = weights
 
     results = pd.DataFrame(portfolio_returns)
+    if results.empty:
+        return results
     results["date"] = pd.to_datetime(results["date"])
     results.set_index("date", inplace=True)
     return results
