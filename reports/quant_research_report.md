@@ -5,13 +5,13 @@
 This project implements a modular quantitative equity research pipeline for a long/short strategy across S&P 100 equities. The research combines traditional cross-sectional factors, machine learning return ranking, walk-forward validation, transaction-cost-aware portfolio construction, and risk reporting.
 
 Headline multi-factor metrics in this checkout are taken from committed
-`results/multi_factor_results.csv` over **2019-01-31 → 2025-11-28**: annual return
-**11.01%**, annual volatility **25.34%**, Sharpe ratio **0.43**, maximum drawdown
-**-38.58%**, beta versus SPY about **-0.21**, and cumulative return **69.62%**
-(matching ending wealth **1.6962** in `results/multi_factor_equity_curve.csv`).
+`results/multi_factor_results.csv` over **2019-01-31 → 2026-09-30**: annual return
+**11.31%**, annual volatility **28.97%**, Sharpe ratio **0.39**, maximum drawdown
+**-39.12%**, beta versus SPY about **0.72**, and cumulative return **70.63%**
+(matching ending wealth **1.7063** in `results/multi_factor_equity_curve.csv`).
 An older narrative snapshot (Sharpe **1.16**, cumulative **196.1%**) and walk-forward
 ML figures (**23.1%** / Sharpe **0.88**) appear in earlier text of this report but are
-**not** reproduced by the committed multi-factor series; only the walk-forward chart
+**not** reproduced by the committed multi-factor series; corrected walk-forward metrics are in `results/walk_forward_metrics.csv`; the walk-forward chart
 `results/walk_forward_ml_strategy.png` is committed.
 
 The results are research outputs from a prototype workflow and should be interpreted with realistic caveats: the universe is based on a modern S&P 100-style equity list, prices come from Yahoo Finance, transaction costs are simplified, and execution assumptions are idealized. They are not investment promises or live-trading claims.
@@ -110,6 +110,7 @@ The reported walk-forward schedule is:
 | 2018-2022 | 2023 |
 | 2018-2023 | 2024 |
 | 2018-2024 | 2025 |
+| 2018-2025 | 2026 (through 2026-09-30) |
 
 This expanding-window process simulates how a research model would be retrained as new data becomes available.
 
@@ -159,22 +160,37 @@ The machine learning model uses a small feature set and a simple target. Walk-fo
 
 Source of truth for the multi-factor backtest in this repository checkout:
 `results/multi_factor_results.csv` (`portfolio_return`), sample
-**2019-01-31 → 2025-11-28** (83 month-end rows). Ending wealth in
-`results/multi_factor_equity_curve.csv` is **1.6962**.
+**2019-01-31 → 2026-09-30** (93 month-end rows). Ending wealth in
+`results/multi_factor_equity_curve.csv` is **1.7063**.
 
 | Metric | Value from committed multi-factor results |
 |---|---:|
-| Annual Return | 11.01% |
-| Annual Volatility | 25.34% |
-| Sharpe Ratio | 0.43 |
-| Max Drawdown | -38.58% |
-| Cumulative Return | 69.62% |
-| Average One-Way Turnover | 120.91% |
-| Latest Turnover | 170.00% |
-| Beta vs SPY (rolling, latest) | -0.21 |
+| Annual Return | 11.31% |
+| Annual Volatility | 28.97% |
+| Sharpe Ratio | 0.39 |
+| Max Drawdown | -39.12% |
+| Cumulative Return | 70.63% |
+| Average One-Way Turnover | 134.73% |
+| Latest Turnover | 140.00% |
+| Beta vs SPY (summary report) | 0.72 |
 
 `make report` regenerates the same family of numbers into local
 `results/reports/summary_report.md` / `.csv` (gitignored).
+
+### Walk-forward ML (regenerated 2026-11-05)
+
+From `results/walk_forward_metrics.csv`, regenerated from Yahoo Finance prices (2018-01-02 →
+2026-10-30) with month-end rebalancing, non-overlapping month-end → next-month-end returns,
+purge/embargo of 21-day labels, and `MAX_GROSS_EXPOSURE = 1.0` from `config/platform_config.json`.
+Sample: **2022-01-31 → 2026-09-30** (57 month-end periods).
+
+| Metric | Walk-forward ML |
+|---|---:|
+| Annual return | 20.24% |
+| Annual volatility | 28.73% |
+| Sharpe ratio | 0.70 |
+| Max drawdown | -27.28% |
+| Cumulative return | 115.00% |
 
 ### Older narrative snapshot (not current)
 
@@ -182,9 +198,8 @@ Earlier versions of this report quoted annual return **24.92%**, volatility **21
 Sharpe **1.16**, max drawdown **-20.43%**, cumulative return **196.10%**, turnover
 **137.41%**, latest turnover **110.00%**, beta **-0.42**, plus walk-forward ML
 **23.1%** annual return / Sharpe **0.88**. Those figures are retained here only as
-historical narrative; they are not reproduced by the committed multi-factor CSV, and no
-walk-forward metrics CSV is committed (chart only:
-`results/walk_forward_ml_strategy.png`).
+historical narrative; they are not reproduced by the regenerated artifacts. Corrected walk-forward metrics are in
+`results/walk_forward_metrics.csv`.
 
 Sharpe ratio measures annualized return per unit of annualized volatility. A higher Sharpe indicates more return for each unit of risk, but it does not capture tail risk, liquidity risk, or path dependence.
 
@@ -216,16 +231,16 @@ _Rolling volatility chart: run `make report` to generate `results/reports/rollin
 
 ### Beta
 
-Beta measures sensitivity to SPY. A beta of 1.0 means the strategy tends to move like SPY, while a beta near 0.0 indicates low linear market exposure. The latest rolling beta of about **-0.21** (from the committed multi-factor return series versus SPY) suggests negative estimated market sensitivity over the measured window.
+Beta measures sensitivity to SPY. A beta of 1.0 means the strategy tends to move like SPY, while a beta near 0.0 indicates low linear market exposure. The latest rolling beta of about **0.72** (from the committed multi-factor return series versus SPY) suggests negative estimated market sensitivity over the measured window.
 
 ### Turnover
 
-Turnover measures how much the portfolio changes between rebalances. Average one-way turnover of about **120.91%** (latest **170.00%**) indicates meaningful monthly portfolio churn. High turnover can erode live performance once spreads, slippage, borrow fees, and market impact are modeled more completely.
+Turnover measures how much the portfolio changes between rebalances. Average one-way turnover of about **134.73%** (latest **140.00%**) indicates meaningful monthly portfolio churn. High turnover can erode live performance once spreads, slippage, borrow fees, and market impact are modeled more completely.
 
 ## Key Findings
 
-- From committed `results/multi_factor_results.csv`, the multi-factor series shows **11.01% annual return**, **0.43 Sharpe**, **-38.58% max drawdown**, and **69.62% cumulative return** over 2019-01-31 → 2025-11-28.
-- Walk-forward ML has a committed chart (`results/walk_forward_ml_strategy.png`) but no committed metrics CSV; older **23.1% / 0.88 Sharpe** narrative figures are not treated as current headline results.
+- From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **11.31% annual return**, **0.39 Sharpe**, **-39.12% max drawdown**, and **70.63% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
+- Corrected walk-forward ML (month-end, purge/embargo, gross 1.0) shows **20.24% annual return**, **0.70 Sharpe**, **-27.28% max drawdown**, **115.00% cumulative** over 2022-01-31 → 2026-09-30 (57 periods); older **23.1% / 0.88 Sharpe** figures are superseded.
 - The architecture now separates data, features, models, portfolio construction, backtests, risk, and reporting into reusable modules.
 - Risk analytics add review context by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
 - The research remains a prototype until point-in-time constituents, more realistic trading costs, borrow assumptions, and production-grade data are added.

@@ -62,7 +62,7 @@ SYSTEM_STATUS_REPORT_PATH = "reports/system_status.md"
 SYSTEM_STATUS_JSON_PATH = "results/operations/latest_system_status.json"
 
 START_DATE = "2018-01-01"
-END_DATE = "2025-12-31"
+END_DATE = "2026-11-01"
 
 PRICE_DATA_PATH = "data/price_data.csv"
 VOLUME_DATA_PATH = "data/volume_data.csv"
@@ -148,7 +148,7 @@ FEATURES = list(_STRATEGY.get("features", [
 TARGET = "target_return_1m"
 PREDICTION_COLUMN = "predicted_return"
 MODEL_SPLIT_DATE = "2024-01-01"
-WALK_FORWARD_TEST_YEARS = [2022, 2023, 2024, 2025]
+WALK_FORWARD_TEST_YEARS = [2022, 2023, 2024, 2025, 2026]
 
 MOMENTUM_LONG_COUNT = 5
 MOMENTUM_SHORT_COUNT = 5

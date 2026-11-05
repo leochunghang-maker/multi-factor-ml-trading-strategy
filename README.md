@@ -270,6 +270,7 @@ The reported walk-forward schedule is:
 | 2018-2022 | 2023 |
 | 2018-2023 | 2024 |
 | 2018-2024 | 2025 |
+| 2018-2025 | 2026 (through 2026-09-30) |
 
 Forward returns are used only as labels or realized outcomes. They are not used to form live
 signals.
@@ -313,26 +314,41 @@ complete production risk system.
 
 Headline multi-factor metrics below are recomputed from the committed artifact
 `results/multi_factor_results.csv` (`portfolio_return` column) using the project's
-`calculate_performance_metrics` helper. Sample window: **2019-01-31 → 2025-11-28**
-(83 month-end observations). The ending wealth level in
-`results/multi_factor_equity_curve.csv` is **1.6962**, matching the **69.62%** cumulative
+`calculate_performance_metrics` helper. Sample window: **2019-01-31 → 2026-09-30**
+(93 month-end observations). The ending wealth level in
+`results/multi_factor_equity_curve.csv` is **1.7063**, matching the **70.63%** cumulative
 return. Regenerating with `make report` writes the same family of numbers to local
 `results/reports/summary_report.md` / `.csv` (those paths are gitignored generated outputs).
 
 | Metric | Value from `results/multi_factor_results.csv` |
 |---|---:|
-| Annual return | 11.01% |
-| Annual volatility | 25.34% |
-| Sharpe ratio | 0.43 |
-| Max drawdown | -38.58% |
-| Cumulative return | 69.62% |
-| Average one-way turnover | 120.91% |
-| Latest turnover | 170.00% |
-| Beta vs SPY (rolling, latest) | -0.21 |
+| Annual return | 11.31% |
+| Annual volatility | 28.97% |
+| Sharpe ratio | 0.39 |
+| Max drawdown | -39.12% |
+| Cumulative return | 70.63% |
+| Average one-way turnover | 134.73% |
+| Latest turnover | 140.00% |
+| Beta vs SPY (summary report) | 0.72 |
 
 These are research outputs from the current committed backtest series, not forward-looking
 claims. Interpret them with the limitations below (survivorship bias, simplified transaction
 costs, idealized execution).
+
+### Walk-forward ML (regenerated 2026-11-05)
+
+From `results/walk_forward_metrics.csv`, regenerated from Yahoo Finance prices (2018-01-02 →
+2026-10-30) with month-end rebalancing, non-overlapping month-end → next-month-end returns,
+purge/embargo of 21-day labels, and `MAX_GROSS_EXPOSURE = 1.0` from `config/platform_config.json`.
+Sample: **2022-01-31 → 2026-09-30** (57 month-end periods).
+
+| Metric | Walk-forward ML |
+|---|---:|
+| Annual return | 20.24% |
+| Annual volatility | 28.73% |
+| Sharpe ratio | 0.70 |
+| Max drawdown | -27.28% |
+| Cumulative return | 115.00% |
 
 ### Older narrative snapshot (not reproduced by current artifacts)
 
@@ -340,8 +356,7 @@ costs, idealized execution).
 (annual return **24.92%**, Sharpe **1.16**, cumulative return **196.10%**, beta **-0.42**,
 turnover **137.41%**) and walk-forward ML figures (**23.1%** annual return, Sharpe **0.88**).
 Those figures are **not** reproduced by the committed `results/multi_factor_results.csv` in
-this checkout, and there is no committed walk-forward metrics CSV—only the chart
-`results/walk_forward_ml_strategy.png`. Prefer the table above for current review.
+this checkout, The corrected walk-forward metrics now live in `results/walk_forward_metrics.csv` (below).
 
 ### Paper-trading and system status (committed reports)
 
