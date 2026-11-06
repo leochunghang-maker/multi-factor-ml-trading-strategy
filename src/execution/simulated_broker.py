@@ -217,13 +217,24 @@ class SimulatedBroker:
                 total += abs(quantity) * prices.get(symbol, 0.0)
         return total
 
-    def accrue_financing(self, prices: dict[str, float], timestamp: str = "") -> dict:
+    def accrue_financing(
+        self,
+        prices: dict[str, float],
+        timestamp: str = "",
+        borrow_bps_by_symbol: dict[str, float] | None = None,
+    ) -> dict:
         """Deduct one trading day's borrow / cash-financing from cash.
 
         Long-only cash accounts normally accrue 0. Short borrow and margin-debit
-        financing activate when shorts exist or cash is negative.
+        financing activate when shorts exist or cash is negative. Optional
+        ``borrow_bps_by_symbol`` applies name-level HTB tiers to short MVs.
         """
-        short_mv = self.short_market_value(prices)
+        short_mvs = {
+            symbol: abs(qty) * prices.get(symbol, 0.0)
+            for symbol, qty in self.positions.items()
+            if qty < 0
+        }
+        short_mv = sum(short_mvs.values())
         margin_debit = max(0.0, -self.cash)
         cost = daily_financing_dollars(
             short_market_value=short_mv,
@@ -231,6 +242,8 @@ class SimulatedBroker:
             annual_borrow_bps=self.annual_borrow_bps,
             annual_short_rebate_bps=self.annual_short_rebate_bps,
             annual_cash_financing_bps=self.annual_cash_financing_bps,
+            short_market_values_by_symbol=short_mvs or None,
+            borrow_bps_by_symbol=borrow_bps_by_symbol,
         )
         if cost:
             self.cash -= cost
@@ -240,6 +253,7 @@ class SimulatedBroker:
             "margin_debit": margin_debit,
             "financing_cost": cost,
             "cash_after": self.cash,
+            "n_short_names": len(short_mvs),
         }
 
     def position_values(self, prices: dict[str, float]) -> dict[str, float]:

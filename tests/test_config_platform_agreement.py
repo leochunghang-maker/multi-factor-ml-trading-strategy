@@ -30,6 +30,9 @@ def test_config_values_agree_with_platform_config() -> None:
     assert config.ANNUAL_BORROW_BPS == execution["annual_borrow_bps"]
     assert config.ANNUAL_SHORT_REBATE_BPS == execution["annual_short_rebate_bps"]
     assert config.ANNUAL_CASH_FINANCING_BPS == execution["annual_cash_financing_bps"]
+    assert config.BORROW_TIERING_ENABLED == execution["borrow_tiering_enabled"]
+    assert config.BORROW_TIER_LOOKBACK_DAYS == execution["borrow_tier_lookback_days"]
+    assert config.BORROW_TIER_RATES_BPS["htb"] == execution["borrow_tier_rates_bps"]["htb"]
 
     assert config.SIMULATED_INITIAL_CASH == simulation["starting_capital"]
     assert config.MULTI_DAY_STARTING_CAPITAL == simulation["starting_capital"]

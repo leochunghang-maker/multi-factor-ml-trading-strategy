@@ -32,6 +32,7 @@ from src.models.validation import (
 )
 from src.models.ml import train_random_forest
 from src.models.nested import default_nested_candidates, select_model_nested
+from src.execution.borrow_tiers import research_borrow_bps_panel
 from src.portfolio import (
     build_prediction_long_short_returns,
     month_end_holding_period_returns,
@@ -46,6 +47,7 @@ def run_prediction_backtest(
     prices = load_price_data()
     holding_returns = month_end_holding_period_returns(prices)
     eligibility = load_default_eligibility_mask(prices)
+    borrow_panel = research_borrow_bps_panel(prices)
     results = build_prediction_long_short_returns(
         predictions,
         score_column=PREDICTION_COLUMN,
@@ -56,6 +58,7 @@ def run_prediction_backtest(
         rebalance_on_month_ends=True,
         gross_exposure=RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
         eligibility=eligibility,
+        borrow_bps_panel=borrow_panel,
     )
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)
@@ -164,6 +167,7 @@ def run_walk_forward_ml_backtest(
     prices = load_price_data()
     holding_returns = month_end_holding_period_returns(prices)
     eligibility = load_default_eligibility_mask(prices)
+    borrow_panel = research_borrow_bps_panel(prices)
     results = build_prediction_long_short_returns(
         predictions,
         score_column=PREDICTION_COLUMN,
@@ -175,6 +179,7 @@ def run_walk_forward_ml_backtest(
         rebalance_on_month_ends=True,
         gross_exposure=RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
         eligibility=eligibility,
+        borrow_bps_panel=borrow_panel,
     )
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)

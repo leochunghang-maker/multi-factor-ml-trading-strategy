@@ -330,20 +330,19 @@ complete production risk system.
 Headline multi-factor metrics below are recomputed from the committed artifact
 `results/multi_factor_results.csv` (`portfolio_return` column) using the project's
 `calculate_performance_metrics` helper, with the PIT eligibility filter enabled
-(tradability + month-end S&P 500 membership overlay) and a **100 bps/year** stock-borrow
-fee on short gross (`execution.annual_borrow_bps`). Sample window:
+(tradability + month-end S&P 500 membership overlay) and **name-level HTB borrow tiers** (GC default `annual_borrow_bps=100`). Sample window:
 **2019-01-31 → 2026-09-30** (93 month-end observations). The ending wealth level in
-`results/multi_factor_equity_curve.csv` is **1.2953**, matching the **29.53%** cumulative
+`results/multi_factor_equity_curve.csv` is **1.2083**, matching the **20.83%** cumulative
 return. Regenerating with `make report` writes the same family of numbers to local
 `results/reports/summary_report.md` / `.csv` (those paths are gitignored generated outputs).
 
 | Metric | Value from `results/multi_factor_results.csv` |
 |---|---:|
-| Annual return | 7.57% |
+| Annual return | 6.68% |
 | Annual volatility | 28.44% |
-| Sharpe ratio | 0.27 |
-| Max drawdown | -42.14% |
-| Cumulative return | 29.53% |
+| Sharpe ratio | 0.23 |
+| Max drawdown | -43.21% |
+| Cumulative return | 20.83% |
 | Average one-way turnover | 136.13% |
 | Latest turnover | 140.00% |
 | Beta vs SPY (month-end holding returns) | -0.30 |
@@ -352,25 +351,24 @@ These are research outputs from the current committed backtest series, not forwa
 claims. Interpret them with the limitations below (residual survivorship bias, simplified
 transaction costs, idealized execution).
 
-### Walk-forward ML (regenerated 2026-11-06, cost-aware nested score)
+### Walk-forward ML (regenerated 2026-11-06, cost-aware nested + HTB tiers)
 
 From `results/walk_forward_metrics.csv`, regenerated from Yahoo Finance prices (2018-01-02 →
 2026-10-30) with month-end rebalancing, non-overlapping month-end → next-month-end returns,
 purge/embargo of 21-day labels, research long/short gross exposure 2.0 (100% long + 100% short,
 `research.long_short_gross_exposure` in `config/platform_config.json`), the PIT eligibility filter,
-monthly stock-borrow on short gross (`annual_borrow_bps=100`), and **nested model selection**
-with inner score `cost_aware_sharpe`. This is distinct from the paper-trading cap
+name-level HTB borrow tiers (ADV$+vol proxy + overrides; GC=`annual_borrow_bps`), and **nested model selection** with inner score `cost_aware_sharpe`. This is distinct from the paper-trading cap
 `MAX_GROSS_EXPOSURE = 1.0`, which these research backtests do not apply.
 Sample: **2022-01-31 → 2026-09-30** (57 month-end periods). Nested choices under
 `cost_aware_sharpe`: **2022–2026 = `rf_default`** (ridge won under raw `rank_ic` previously).
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 17.92% |
+| Annual return | 17.42% |
 | Annual volatility | 27.60% |
-| Sharpe ratio | 0.65 |
-| Max drawdown | -25.95% |
-| Cumulative return | 103.08% |
+| Sharpe ratio | 0.63 |
+| Max drawdown | -26.26% |
+| Cumulative return | 98.55% |
 
 
 ### Older narrative snapshot (not reproduced by current artifacts)
@@ -499,9 +497,12 @@ python src/operations/health.py
   after a last valid print are treated as delisted for eligibility.
 - Yahoo Finance data is convenient for research but not institutional-grade market data.
 - Transaction costs and slippage are simplified assumptions.
-- Research long/short books charge a flat annualized stock-borrow fee on short gross
-  (`execution.annual_borrow_bps`, default **100**); optional short rebate and cash financing
-  default to 0. This is not name-level hard-to-borrow pricing.
+- Research long/short books charge **name-level borrow tiers** when
+  `execution.borrow_tiering_enabled` is true: GC / elevated / HTB / special rates from an
+  ADV$ + realized-vol proxy, plus demo overrides in `data/borrow_tier_overrides.csv`
+  (PLTR=htb, TSLA/GEV=elevated). Latest snapshot: `data/borrow_tier_map.csv`. This is a
+  **transparent proxy, not a live locate / prime-broker HTB feed**. Flat
+  `annual_borrow_bps` (100) remains the GC rate; rebate/cash financing default to 0.
 - Paper/sim is long-only, so short borrow is usually **0** there; daily accrual still runs on
   any short market value and on margin debit `max(0, -cash)`.
 - Name-level hard-to-borrow fees, locate failures, taxes, and prime-broker financing schedules are

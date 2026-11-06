@@ -33,7 +33,17 @@
     "annual_borrow_bps": 100.0,
     "annual_short_rebate_bps": 0.0,
     "annual_cash_financing_bps": 0.0,
-    "financing_note": "Research L/S: annual_borrow_bps charged on short gross each month (periods_per_year=12); rebate/cash financing optional. Paper/sim is long-only so short borrow is usually 0; daily accrual still runs on any short MV and on margin debit max(0,-cash)."
+    "financing_note": "Research L/S: name-level borrow tiers (GC/elevated/HTB/special) from ADV$+vol proxy plus optional overrides in data/borrow_tier_overrides.csv \u2014 NOT a live locate feed. Flat annual_borrow_bps remains the GC default. Paper/sim is long-only so short borrow is usually 0; daily accrual supports name-level rates if shorts exist.",
+    "borrow_tiering_enabled": true,
+    "borrow_tier_lookback_days": 63,
+    "borrow_tier_overrides_path": "data/borrow_tier_overrides.csv",
+    "borrow_tier_map_path": "data/borrow_tier_map.csv",
+    "borrow_tier_rates_bps": {
+      "gc": 100.0,
+      "elevated": 300.0,
+      "htb": 1000.0,
+      "special": 3000.0
+    }
   },
   "risk_limits": {
     "max_positions": 10,

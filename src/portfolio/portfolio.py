@@ -9,6 +9,25 @@ from src.config import (
 from src.execution.financing import financing_cost_from_weights
 
 
+def _borrow_bps_on_date(
+    borrow_bps_panel: pd.DataFrame | None,
+    date,
+    universe: pd.Index,
+) -> pd.Series | None:
+    """Per-name annual borrow bps for ``date``, or None for flat-rate financing."""
+    if borrow_bps_panel is None or borrow_bps_panel.empty:
+        return None
+    stamp = pd.Timestamp(date)
+    if stamp not in borrow_bps_panel.index:
+        prior = borrow_bps_panel.index[borrow_bps_panel.index <= stamp]
+        if len(prior) == 0:
+            return None
+        stamp = prior[-1]
+    return borrow_bps_panel.loc[stamp].reindex(universe)
+
+
+
+
 def month_end_trading_dates(frame: pd.DataFrame | pd.Series) -> pd.DatetimeIndex:
     """Return the last available observation in each calendar month."""
     index = pd.DatetimeIndex(frame.index).sort_values()
@@ -127,6 +146,7 @@ def build_factor_long_short_returns(
     annual_short_rebate_bps: float = ANNUAL_SHORT_REBATE_BPS,
     annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS,
     periods_per_year: float = PERIODS_PER_YEAR,
+    borrow_bps_panel: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     portfolio_returns = []
     monthly_dates = month_end_trading_dates(scores)
@@ -156,12 +176,14 @@ def build_factor_long_short_returns(
                 short_count,
                 transaction_cost=0.0,
             )
+            name_borrow = _borrow_bps_on_date(borrow_bps_panel, date, weights.index)
             financing_cost = financing_cost_from_weights(
                 weights,
                 annual_borrow_bps=annual_borrow_bps,
                 annual_short_rebate_bps=annual_short_rebate_bps,
                 annual_cash_financing_bps=annual_cash_financing_bps,
                 periods_per_year=periods_per_year,
+                borrow_bps_by_symbol=name_borrow,
             )
             portfolio_return = row["portfolio_return"] - transaction_cost_amount - financing_cost
             portfolio_returns.append({
@@ -237,6 +259,7 @@ def build_prediction_long_short_returns(
     annual_short_rebate_bps: float = ANNUAL_SHORT_REBATE_BPS,
     annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS,
     periods_per_year: float = PERIODS_PER_YEAR,
+    borrow_bps_panel: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Build long/short portfolio returns from cross-sectional predictions.
 
@@ -304,12 +327,14 @@ def build_prediction_long_short_returns(
             previous_weights,
             transaction_cost,
         )
+        name_borrow = _borrow_bps_on_date(borrow_bps_panel, date, weights.index)
         financing_cost = financing_cost_from_weights(
             weights,
             annual_borrow_bps=annual_borrow_bps,
             annual_short_rebate_bps=annual_short_rebate_bps,
             annual_cash_financing_bps=annual_cash_financing_bps,
             periods_per_year=periods_per_year,
+            borrow_bps_by_symbol=name_borrow,
         )
         portfolio_return = gross_return - transaction_cost_amount - financing_cost
 
@@ -345,6 +370,7 @@ def build_multi_factor_long_short_returns(
     annual_short_rebate_bps: float = ANNUAL_SHORT_REBATE_BPS,
     annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS,
     periods_per_year: float = PERIODS_PER_YEAR,
+    borrow_bps_panel: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     portfolio_returns = []
     monthly_dates = month_end_trading_dates(momentum)
@@ -389,12 +415,14 @@ def build_multi_factor_long_short_returns(
                 transaction_cost=0.0,
             )
             gross_return = side * row["portfolio_return"]
+            name_borrow = _borrow_bps_on_date(borrow_bps_panel, date, weights.index)
             financing_cost = financing_cost_from_weights(
                 weights,
                 annual_borrow_bps=annual_borrow_bps,
                 annual_short_rebate_bps=annual_short_rebate_bps,
                 annual_cash_financing_bps=annual_cash_financing_bps,
                 periods_per_year=periods_per_year,
+                borrow_bps_by_symbol=name_borrow,
             )
             portfolio_returns.append({
                 "date": date,

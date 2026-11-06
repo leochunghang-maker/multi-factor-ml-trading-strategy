@@ -199,6 +199,23 @@ IMPACT_ADV_LOOKBACK_DAYS = int(_EXECUTION.get("impact_adv_lookback_days", 63))
 ANNUAL_BORROW_BPS = float(_EXECUTION.get("annual_borrow_bps", 100.0))
 ANNUAL_SHORT_REBATE_BPS = float(_EXECUTION.get("annual_short_rebate_bps", 0.0))
 ANNUAL_CASH_FINANCING_BPS = float(_EXECUTION.get("annual_cash_financing_bps", 0.0))
+BORROW_TIERING_ENABLED = bool(_EXECUTION.get("borrow_tiering_enabled", True))
+BORROW_TIER_LOOKBACK_DAYS = int(_EXECUTION.get("borrow_tier_lookback_days", 63))
+BORROW_TIER_OVERRIDES_PATH = str(
+    _EXECUTION.get("borrow_tier_overrides_path", "data/borrow_tier_overrides.csv")
+)
+BORROW_TIER_MAP_PATH = str(
+    _EXECUTION.get("borrow_tier_map_path", "data/borrow_tier_map.csv")
+)
+BORROW_TIER_RATES_BPS = {
+    str(k).lower(): float(v)
+    for k, v in dict(_EXECUTION.get("borrow_tier_rates_bps", {
+        "gc": ANNUAL_BORROW_BPS,
+        "elevated": 300.0,
+        "htb": 1000.0,
+        "special": 3000.0,
+    })).items()
+}
 MAX_TURNOVER = float(_RISK.get("max_turnover", 1.0))
 MAX_PAPER_TURNOVER = float(_RISK.get("max_turnover", 1.0))
 # Paper/sim circuit breaker: when portfolio drawdown falls to or below this
