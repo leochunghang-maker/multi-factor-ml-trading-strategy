@@ -1,5 +1,13 @@
 import pandas as pd
 
+from src.config import (
+    ANNUAL_BORROW_BPS,
+    ANNUAL_CASH_FINANCING_BPS,
+    ANNUAL_SHORT_REBATE_BPS,
+    PERIODS_PER_YEAR,
+)
+from src.execution.financing import financing_cost_from_weights
+
 
 def month_end_trading_dates(frame: pd.DataFrame | pd.Series) -> pd.DatetimeIndex:
     """Return the last available observation in each calendar month."""
@@ -115,6 +123,10 @@ def build_factor_long_short_returns(
     transaction_cost: float = 0.0,
     return_column: str = "portfolio_return",
     eligibility: pd.DataFrame | None = None,
+    annual_borrow_bps: float = ANNUAL_BORROW_BPS,
+    annual_short_rebate_bps: float = ANNUAL_SHORT_REBATE_BPS,
+    annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS,
+    periods_per_year: float = PERIODS_PER_YEAR,
 ) -> pd.DataFrame:
     portfolio_returns = []
     monthly_dates = month_end_trading_dates(scores)
@@ -144,13 +156,21 @@ def build_factor_long_short_returns(
                 short_count,
                 transaction_cost=0.0,
             )
-            portfolio_return = row["portfolio_return"] - transaction_cost_amount
+            financing_cost = financing_cost_from_weights(
+                weights,
+                annual_borrow_bps=annual_borrow_bps,
+                annual_short_rebate_bps=annual_short_rebate_bps,
+                annual_cash_financing_bps=annual_cash_financing_bps,
+                periods_per_year=periods_per_year,
+            )
+            portfolio_return = row["portfolio_return"] - transaction_cost_amount - financing_cost
             portfolio_returns.append({
                 "date": date,
                 "long_return": row["long_return"],
                 "short_return": row["short_return"],
                 "gross_return": row["portfolio_return"],
                 "transaction_cost": transaction_cost_amount,
+                "financing_cost": financing_cost,
                 "traded_gross_exposure": traded_gross_exposure,
                 return_column: portfolio_return,
             })
@@ -213,6 +233,10 @@ def build_prediction_long_short_returns(
     rebalance_on_month_ends: bool = True,
     gross_exposure: float = 2.0,
     eligibility: pd.DataFrame | None = None,
+    annual_borrow_bps: float = ANNUAL_BORROW_BPS,
+    annual_short_rebate_bps: float = ANNUAL_SHORT_REBATE_BPS,
+    annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS,
+    periods_per_year: float = PERIODS_PER_YEAR,
 ) -> pd.DataFrame:
     """Build long/short portfolio returns from cross-sectional predictions.
 
@@ -280,12 +304,20 @@ def build_prediction_long_short_returns(
             previous_weights,
             transaction_cost,
         )
-        portfolio_return = gross_return - transaction_cost_amount
+        financing_cost = financing_cost_from_weights(
+            weights,
+            annual_borrow_bps=annual_borrow_bps,
+            annual_short_rebate_bps=annual_short_rebate_bps,
+            annual_cash_financing_bps=annual_cash_financing_bps,
+            periods_per_year=periods_per_year,
+        )
+        portfolio_return = gross_return - transaction_cost_amount - financing_cost
 
         portfolio_returns.append({
             "date": date,
             "gross_return": gross_return,
             "transaction_cost": transaction_cost_amount,
+            "financing_cost": financing_cost,
             "traded_gross_exposure": traded_gross_exposure,
             "portfolio_return": portfolio_return,
         })
@@ -309,6 +341,10 @@ def build_multi_factor_long_short_returns(
     transaction_cost: float,
     gross_exposure: float = 2.0,
     eligibility: pd.DataFrame | None = None,
+    annual_borrow_bps: float = ANNUAL_BORROW_BPS,
+    annual_short_rebate_bps: float = ANNUAL_SHORT_REBATE_BPS,
+    annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS,
+    periods_per_year: float = PERIODS_PER_YEAR,
 ) -> pd.DataFrame:
     portfolio_returns = []
     monthly_dates = month_end_trading_dates(momentum)
@@ -353,12 +389,20 @@ def build_multi_factor_long_short_returns(
                 transaction_cost=0.0,
             )
             gross_return = side * row["portfolio_return"]
+            financing_cost = financing_cost_from_weights(
+                weights,
+                annual_borrow_bps=annual_borrow_bps,
+                annual_short_rebate_bps=annual_short_rebate_bps,
+                annual_cash_financing_bps=annual_cash_financing_bps,
+                periods_per_year=periods_per_year,
+            )
             portfolio_returns.append({
                 "date": date,
                 "gross_return": gross_return,
                 "transaction_cost": transaction_cost_amount,
+                "financing_cost": financing_cost,
                 "traded_gross_exposure": traded_gross_exposure,
-                "portfolio_return": gross_return - transaction_cost_amount,
+                "portfolio_return": gross_return - transaction_cost_amount - financing_cost,
             })
             previous_weights = weights
 

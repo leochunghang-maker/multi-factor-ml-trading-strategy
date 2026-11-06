@@ -317,19 +317,20 @@ complete production risk system.
 Headline multi-factor metrics below are recomputed from the committed artifact
 `results/multi_factor_results.csv` (`portfolio_return` column) using the project's
 `calculate_performance_metrics` helper, with the PIT eligibility filter enabled
-(tradability + month-end S&P 500 membership overlay). Sample window:
+(tradability + month-end S&P 500 membership overlay) and a **100 bps/year** stock-borrow
+fee on short gross (`execution.annual_borrow_bps`). Sample window:
 **2019-01-31 → 2026-09-30** (93 month-end observations). The ending wealth level in
-`results/multi_factor_equity_curve.csv` is **1.3997**, matching the **39.97%** cumulative
+`results/multi_factor_equity_curve.csv` is **1.2953**, matching the **29.53%** cumulative
 return. Regenerating with `make report` writes the same family of numbers to local
 `results/reports/summary_report.md` / `.csv` (those paths are gitignored generated outputs).
 
 | Metric | Value from `results/multi_factor_results.csv` |
 |---|---:|
-| Annual return | 8.57% |
+| Annual return | 7.57% |
 | Annual volatility | 28.44% |
-| Sharpe ratio | 0.30 |
-| Max drawdown | -40.69% |
-| Cumulative return | 39.97% |
+| Sharpe ratio | 0.27 |
+| Max drawdown | -42.14% |
+| Cumulative return | 29.53% |
 | Average one-way turnover | 136.13% |
 | Latest turnover | 140.00% |
 | Beta vs SPY (month-end holding returns) | -0.30 |
@@ -338,23 +339,23 @@ These are research outputs from the current committed backtest series, not forwa
 claims. Interpret them with the limitations below (residual survivorship bias, simplified
 transaction costs, idealized execution).
 
-### Walk-forward ML (regenerated 2026-11-06)
+### Walk-forward ML (regenerated 2026-11-06, + borrow fee)
 
 From `results/walk_forward_metrics.csv`, regenerated from Yahoo Finance prices (2018-01-02 →
 2026-10-30) with month-end rebalancing, non-overlapping month-end → next-month-end returns,
 purge/embargo of 21-day labels, research long/short gross exposure 2.0 (100% long + 100% short,
-`research.long_short_gross_exposure` in `config/platform_config.json`), and the PIT eligibility
-filter. This is distinct from the paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`, which these
+`research.long_short_gross_exposure` in `config/platform_config.json`), the PIT eligibility filter, and monthly stock-borrow on short gross
+(`annual_borrow_bps=100`). This is distinct from the paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`, which these
 research backtests do not apply.
 Sample: **2022-01-31 → 2026-09-30** (57 month-end periods).
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 18.92% |
+| Annual return | 17.92% |
 | Annual volatility | 27.60% |
-| Sharpe ratio | 0.69 |
-| Max drawdown | -25.48% |
-| Cumulative return | 112.68% |
+| Sharpe ratio | 0.65 |
+| Max drawdown | -25.95% |
+| Cumulative return | 103.08% |
 
 ### Older narrative snapshot (not reproduced by current artifacts)
 
@@ -482,8 +483,13 @@ python src/operations/health.py
   after a last valid print are treated as delisted for eligibility.
 - Yahoo Finance data is convenient for research but not institutional-grade market data.
 - Transaction costs and slippage are simplified assumptions.
-- Short borrow costs, financing costs, taxes, locates, and hard-to-borrow constraints are not fully
-  modeled.
+- Research long/short books charge a flat annualized stock-borrow fee on short gross
+  (`execution.annual_borrow_bps`, default **100**); optional short rebate and cash financing
+  default to 0. This is not name-level hard-to-borrow pricing.
+- Paper/sim is long-only, so short borrow is usually **0** there; daily accrual still runs on
+  any short market value and on margin debit `max(0, -cash)`.
+- Name-level hard-to-borrow fees, locate failures, taxes, and prime-broker financing schedules are
+  still not modeled (only a flat book-level borrow/rebate/cash-financing schedule).
 - Simulated fills (paper/sim only) pay fixed slippage (5 bps) + half-spread (`half_spread_bps`, 2 bps)
   + square-root impact `impact_coefficient_bps * sqrt(notional / 63-day ADV$)` (100 bps coefficient),
   all set in `config/platform_config.json` `execution`. Full-history monthly multi-day simulation
@@ -491,7 +497,7 @@ python src/operations/health.py
   (2018-01-02 → 2026-10-30, 2220 days, 1405 trades, 9 DRAWDOWN_HALT events): final NAV
   **$366,120.57**, CAGR **15.84%**, daily Sharpe **0.819**, MDD **−27.01%** at $100k scale.
   Prior drawdown-halt-only run (no PIT filter) was final NAV $459,706.56 / CAGR 18.91% /
-  Sharpe 0.928. Research backtests use a flat `transaction_cost` plus the same eligibility filter.
+  Sharpe 0.928. Research backtests use a flat `transaction_cost`, the same eligibility filter, and monthly stock-borrow on short gross (`annual_borrow_bps=100`).
 - Intraday execution, queue position, partial fills and venue selection are not modeled; ADV uses
   the rebalance day's own volume in its 63-day window.
 - Liquidity filtering uses `data/volume_data.csv` (Yahoo share volume). With it, the 63-day ADV

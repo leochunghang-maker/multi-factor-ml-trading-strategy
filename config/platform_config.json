@@ -24,7 +24,11 @@
     "min_rebalance_dollars": 25.0,
     "half_spread_bps": 2.0,
     "impact_coefficient_bps": 100.0,
-    "impact_adv_lookback_days": 63
+    "impact_adv_lookback_days": 63,
+    "annual_borrow_bps": 100.0,
+    "annual_short_rebate_bps": 0.0,
+    "annual_cash_financing_bps": 0.0,
+    "financing_note": "Research L/S: annual_borrow_bps charged on short gross each month (periods_per_year=12); rebate/cash financing optional. Paper/sim is long-only so short borrow is usually 0; daily accrual still runs on any short MV and on margin debit max(0,-cash)."
   },
   "risk_limits": {
     "max_positions": 10,

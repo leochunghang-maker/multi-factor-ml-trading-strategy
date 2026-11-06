@@ -193,6 +193,12 @@ SLIPPAGE_BPS = float(_EXECUTION.get("slippage_bps", 5.0))
 HALF_SPREAD_BPS = float(_EXECUTION.get("half_spread_bps", 2.0))
 IMPACT_COEFFICIENT_BPS = float(_EXECUTION.get("impact_coefficient_bps", 100.0))
 IMPACT_ADV_LOOKBACK_DAYS = int(_EXECUTION.get("impact_adv_lookback_days", 63))
+# Stock-loan / financing (research L/S + paper/sim accrual). Borrow is charged on
+# short gross; rebate defaults to 0; cash financing defaults to 0 (paper is cash
+# long-only). Units are annualized basis points.
+ANNUAL_BORROW_BPS = float(_EXECUTION.get("annual_borrow_bps", 100.0))
+ANNUAL_SHORT_REBATE_BPS = float(_EXECUTION.get("annual_short_rebate_bps", 0.0))
+ANNUAL_CASH_FINANCING_BPS = float(_EXECUTION.get("annual_cash_financing_bps", 0.0))
 MAX_TURNOVER = float(_RISK.get("max_turnover", 1.0))
 MAX_PAPER_TURNOVER = float(_RISK.get("max_turnover", 1.0))
 # Paper/sim circuit breaker: when portfolio drawdown falls to or below this

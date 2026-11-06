@@ -10,6 +10,9 @@ import pandas as pd
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from src.config import (
+    ANNUAL_BORROW_BPS,
+    ANNUAL_CASH_FINANCING_BPS,
+    ANNUAL_SHORT_REBATE_BPS,
     HALF_SPREAD_BPS,
     IMPACT_COEFFICIENT_BPS,
     IMPACT_ADV_LOOKBACK_DAYS,
@@ -63,6 +66,9 @@ class SimulationSettings:
     max_drawdown_warning: float = MAX_DRAWDOWN_WARNING
     starting_capital: float = MULTI_DAY_STARTING_CAPITAL
     rolling_window: int = MULTI_DAY_ROLLING_WINDOW
+    annual_borrow_bps: float = ANNUAL_BORROW_BPS
+    annual_short_rebate_bps: float = ANNUAL_SHORT_REBATE_BPS
+    annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS
 
 
 def zscore(series: pd.Series) -> pd.Series:
@@ -270,6 +276,7 @@ def save_report(
         f"- Transaction cost: {settings.transaction_cost:.4%}",
         f"- Slippage: {settings.slippage_bps:.2f} bps",
         f"- Half-spread: {HALF_SPREAD_BPS:.2f} bps; sqrt impact coefficient: {IMPACT_COEFFICIENT_BPS:.1f} bps x sqrt(notional/ADV)",
+        f"- Annual borrow: {settings.annual_borrow_bps:.1f} bps on short MV; rebate {settings.annual_short_rebate_bps:.1f} bps; cash financing {settings.annual_cash_financing_bps:.1f} bps on margin debit (paper is long-only → short borrow usually 0)",
         f"- Max positions: {settings.max_positions}",
         f"- Max position weight: {settings.max_position_weight:.2%}",
         f"- Drawdown halt (skip rebalance at/below): {settings.max_drawdown_warning:.2%}",
@@ -351,6 +358,9 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
         cash=settings.starting_capital,
         transaction_cost_rate=settings.transaction_cost,
         slippage_bps=settings.slippage_bps,
+        annual_borrow_bps=settings.annual_borrow_bps,
+        annual_short_rebate_bps=settings.annual_short_rebate_bps,
+        annual_cash_financing_bps=settings.annual_cash_financing_bps,
     )
 
     volumes = load_optional_volume_data(VOLUME_DATA_PATH)
@@ -467,6 +477,7 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
                         "message": f"Expected turnover {allocation['expected_turnover']:.4f}",
                     })
 
+        financing = broker.accrue_financing(price_dict, timestamp=date.isoformat())
         portfolio_value = broker.portfolio_value(price_dict)
         daily_return = portfolio_value / previous_value - 1 if previous_value > 0 else 0.0
         turnover = traded_notional / portfolio_start if portfolio_start > 0 else 0.0
@@ -494,6 +505,7 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
             "portfolio_value": portfolio_value,
             "cash": broker.cash,
             "daily_return": daily_return,
+            "financing_cost": financing["financing_cost"],
             "turnover": turnover,
             "trades_filled": trades_filled,
             "orders_rejected": rejected,
@@ -583,6 +595,9 @@ def main() -> None:
         max_positions=args.max_positions,
         max_position_weight=args.max_position_weight,
         starting_capital=args.starting_capital,
+        annual_borrow_bps=ANNUAL_BORROW_BPS,
+        annual_short_rebate_bps=ANNUAL_SHORT_REBATE_BPS,
+        annual_cash_financing_bps=ANNUAL_CASH_FINANCING_BPS,
     )
     run_simulation(settings, start=args.start, end=args.end)
 

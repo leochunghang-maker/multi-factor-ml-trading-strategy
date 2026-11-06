@@ -6,6 +6,9 @@ from pathlib import Path
 import pandas as pd
 
 from src.config import (
+    ANNUAL_BORROW_BPS,
+    ANNUAL_CASH_FINANCING_BPS,
+    ANNUAL_SHORT_REBATE_BPS,
     HALF_SPREAD_BPS,
     IMPACT_COEFFICIENT_BPS,
     MAX_PAPER_ALLOCATION,
@@ -13,6 +16,7 @@ from src.config import (
     SLIPPAGE_BPS,
     TRANSACTION_COST,
 )
+from src.execution.financing import daily_financing_dollars
 
 
 @dataclass
@@ -32,6 +36,9 @@ class SimulatedBroker:
     slippage_bps: float = SLIPPAGE_BPS
     half_spread_bps: float = HALF_SPREAD_BPS
     impact_coefficient_bps: float = IMPACT_COEFFICIENT_BPS
+    annual_borrow_bps: float = ANNUAL_BORROW_BPS
+    annual_short_rebate_bps: float = ANNUAL_SHORT_REBATE_BPS
+    annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS
     # Average daily dollar volume per symbol; runtime market data, not persisted.
     adv_dollars: dict[str, float] = field(default_factory=dict)
 
@@ -201,6 +208,40 @@ class SimulatedBroker:
             "status": "FILLED",
         }
 
+
+    def short_market_value(self, prices: dict[str, float]) -> float:
+        """Absolute dollar value of short positions (0 for the long-only paper book)."""
+        total = 0.0
+        for symbol, quantity in self.positions.items():
+            if quantity < 0:
+                total += abs(quantity) * prices.get(symbol, 0.0)
+        return total
+
+    def accrue_financing(self, prices: dict[str, float], timestamp: str = "") -> dict:
+        """Deduct one trading day's borrow / cash-financing from cash.
+
+        Long-only cash accounts normally accrue 0. Short borrow and margin-debit
+        financing activate when shorts exist or cash is negative.
+        """
+        short_mv = self.short_market_value(prices)
+        margin_debit = max(0.0, -self.cash)
+        cost = daily_financing_dollars(
+            short_market_value=short_mv,
+            margin_debit=margin_debit,
+            annual_borrow_bps=self.annual_borrow_bps,
+            annual_short_rebate_bps=self.annual_short_rebate_bps,
+            annual_cash_financing_bps=self.annual_cash_financing_bps,
+        )
+        if cost:
+            self.cash -= cost
+        return {
+            "timestamp": timestamp,
+            "short_market_value": short_mv,
+            "margin_debit": margin_debit,
+            "financing_cost": cost,
+            "cash_after": self.cash,
+        }
+
     def position_values(self, prices: dict[str, float]) -> dict[str, float]:
         # Position accounting converts share counts into current dollar values.
         # Missing prices are valued at zero in the snapshot and should be logged
@@ -267,6 +308,9 @@ class SimulatedBroker:
             "slippage_bps": self.slippage_bps,
             "half_spread_bps": self.half_spread_bps,
             "impact_coefficient_bps": self.impact_coefficient_bps,
+            "annual_borrow_bps": self.annual_borrow_bps,
+            "annual_short_rebate_bps": self.annual_short_rebate_bps,
+            "annual_cash_financing_bps": self.annual_cash_financing_bps,
         }
 
     @classmethod
@@ -278,6 +322,11 @@ class SimulatedBroker:
             slippage_bps=float(data.get("slippage_bps", SLIPPAGE_BPS)),
             half_spread_bps=float(data.get("half_spread_bps", HALF_SPREAD_BPS)),
             impact_coefficient_bps=float(data.get("impact_coefficient_bps", IMPACT_COEFFICIENT_BPS)),
+            annual_borrow_bps=float(data.get("annual_borrow_bps", ANNUAL_BORROW_BPS)),
+            annual_short_rebate_bps=float(data.get("annual_short_rebate_bps", ANNUAL_SHORT_REBATE_BPS)),
+            annual_cash_financing_bps=float(
+                data.get("annual_cash_financing_bps", ANNUAL_CASH_FINANCING_BPS)
+            ),
         )
 
     @classmethod

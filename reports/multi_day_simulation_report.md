@@ -9,6 +9,7 @@ This report simulates a local paper-trading operating loop. It does not connect 
 - Transaction cost: 0.1000%
 - Slippage: 5.00 bps
 - Half-spread: 2.00 bps; sqrt impact coefficient: 100.0 bps x sqrt(notional/ADV)
+- Annual borrow: 100.0 bps on short MV; rebate 0.0 bps; cash financing 0.0 bps on margin debit (paper is long-only → short borrow usually 0)
 - Max positions: 10
 - Max position weight: 10.00%
 - Drawdown halt (skip rebalance at/below): -10.00%
