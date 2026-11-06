@@ -15,7 +15,11 @@
     "require_index_membership": true,
     "min_universe_history_days": 63,
     "universe_membership_path": "data/universe_sp500_membership.csv",
-    "universe_note": "Research eligibility = valid price + min history + month-end S&P500 membership (S&P100 subset proxy). Residual survivorship: removed names absent from today's TICKERS are still missing. Paper trading uses the same eligibility when filtering signals."
+    "universe_note": "Research eligibility = valid price + min history + month-end S&P500 membership (S&P100 subset proxy). Residual survivorship: removed names absent from today's TICKERS are still missing. Paper trading uses the same eligibility when filtering signals.",
+    "nested_walk_forward": true,
+    "nested_min_train_years": 2,
+    "nested_use_month_end_subset": true,
+    "nested_note": "Each outer year fold selects among a small candidate set using anchored inner year folds on purged training data only (month-end subset for speed). Does not eliminate all selection bias from the candidate menu itself."
   },
   "execution": {
     "mode": "local_simulated_paper_only",

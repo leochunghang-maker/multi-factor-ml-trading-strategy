@@ -9,6 +9,10 @@ from src.config import (
     ML_LONG_COUNT,
     ML_PREDICTIONS_PATH,
     ML_SHORT_COUNT,
+    NESTED_MIN_TRAIN_YEARS,
+    NESTED_SELECTION_REPORT_PATH,
+    NESTED_USE_MONTH_END_SUBSET,
+    NESTED_WALK_FORWARD,
     PREDICTION_COLUMN,
     RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
     WALK_FORWARD_DECILE_REPORT_PATH,
@@ -26,6 +30,7 @@ from src.models.validation import (
     training_rows_without_label_overlap,
 )
 from src.models.ml import train_random_forest
+from src.models.nested import default_nested_candidates, select_model_nested
 from src.portfolio import (
     build_prediction_long_short_returns,
     month_end_holding_period_returns,
@@ -58,10 +63,14 @@ def run_prediction_backtest(
 def run_walk_forward_ml_backtest(
     transaction_cost: float = TRANSACTION_COST,
     test_years: list[int] | None = None,
+    nested: bool | None = None,
+    nested_candidates: list | None = None,
 ) -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
     df = load_ml_dataset().sort_values("date")
     test_years = test_years or WALK_FORWARD_TEST_YEARS
+    use_nested = NESTED_WALK_FORWARD if nested is None else bool(nested)
     yearly_predictions = []
+    selection_rows: list[dict] = []
 
     splits = purged_embargo_year_splits(
         df["date"],
@@ -92,15 +101,45 @@ def run_walk_forward_ml_backtest(
             test_start=split["test_start"],
             label_horizon_days=ML_EMBARGO_DAYS,
         )
+        # Nested selection may only see purged training rows; never the outer test.
+        assert train_df["date"].max() < split["test_start"]
 
-        X_train = train_df[FEATURES]
-        y_train = train_df[TARGET]
-        model = train_random_forest(X_train, y_train)
+        if use_nested:
+            model, meta = select_model_nested(
+                train_df,
+                feature_columns=FEATURES,
+                target_column=TARGET,
+                candidates=nested_candidates or default_nested_candidates(),
+                label_horizon_days=ML_EMBARGO_DAYS,
+                min_train_years=NESTED_MIN_TRAIN_YEARS,
+                use_month_end_subset=NESTED_USE_MONTH_END_SUBSET,
+                outer_test_year=test_year,
+            )
+            print(
+                f"  nested choice for {test_year}: {meta['chosen_model']} "
+                f"({meta['selection_mode']})"
+            )
+            flat = {
+                "outer_test_year": meta["outer_test_year"],
+                "chosen_model": meta["chosen_model"],
+                "selection_mode": meta["selection_mode"],
+                "n_train_rows": meta["n_train_rows"],
+                "train_start": meta["train_start"],
+                "train_end": meta["train_end"],
+            }
+            for score_row in meta["candidate_scores"]:
+                flat[f"ic_{score_row['name']}"] = score_row["mean_inner_rank_ic"]
+            selection_rows.append(flat)
+        else:
+            model = train_random_forest(train_df[FEATURES], train_df[TARGET])
 
         test_df[PREDICTION_COLUMN] = model.predict(test_df[FEATURES])
         yearly_predictions.append(test_df)
 
     predictions = pd.concat(yearly_predictions, ignore_index=True)
+    if selection_rows:
+        Path(NESTED_SELECTION_REPORT_PATH).parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(selection_rows).to_csv(NESTED_SELECTION_REPORT_PATH, index=False)
     Path(WALK_FORWARD_DECILE_REPORT_PATH).parent.mkdir(parents=True, exist_ok=True)
     decile_spread_analysis(
         predictions,

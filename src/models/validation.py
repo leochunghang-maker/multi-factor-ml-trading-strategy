@@ -147,3 +147,64 @@ def assert_no_label_overlap(
             "training label window overlaps test period: "
             f"latest_label_end={latest_label_end.date()} test_start={pd.Timestamp(test_start).date()}"
         )
+
+
+def month_end_subset(frame: pd.DataFrame, date_column: str = "date") -> pd.DataFrame:
+    """Keep the last observation date in each calendar month (faster nested CV)."""
+    if frame.empty:
+        return frame.copy()
+    dates = pd.to_datetime(frame[date_column])
+    month_ends = (
+        pd.Series(dates.unique(), index=pd.to_datetime(dates.unique()))
+        .groupby(lambda d: d.to_period("M"))
+        .max()
+    )
+    keep = set(pd.to_datetime(month_ends.values))
+    return frame.loc[dates.isin(keep)].copy()
+
+
+def inner_anchored_year_splits(
+    dates: pd.Series,
+    *,
+    min_train_years: int = 2,
+    purge_months: int = 1,
+    embargo_months: int = 1,
+) -> list[dict[str, pd.Timestamp | int]]:
+    """Expanding (anchored) year folds strictly inside an outer training window.
+
+    The earliest ``min_train_years`` calendar years are used only for training;
+    later years become successive inner test folds. Purge/embargo gaps match the
+    outer walk-forward hygiene so inner selection cannot peek across label
+    horizons either.
+    """
+    years = sorted({int(y) for y in pd.to_datetime(dates).dropna().dt.year.unique()})
+    if len(years) < int(min_train_years) + 1:
+        return []
+    test_years = years[int(min_train_years) :]
+    return purged_embargo_year_splits(
+        dates,
+        test_years=test_years,
+        purge_months=purge_months,
+        embargo_months=embargo_months,
+    )
+
+
+def mean_rank_ic(
+    frame: pd.DataFrame,
+    *,
+    date_column: str,
+    score_column: str,
+    target_column: str,
+) -> float:
+    """Average cross-sectional Spearman IC across dates (NaNs skipped)."""
+    ics = []
+    for _, group in frame.groupby(date_column):
+        valid = group[[score_column, target_column]].dropna()
+        if len(valid) < 5 or valid[score_column].nunique() < 2:
+            continue
+        corr = spearmanr(valid[score_column], valid[target_column]).correlation
+        if corr is not None and np.isfinite(corr):
+            ics.append(float(corr))
+    if not ics:
+        return float("nan")
+    return float(np.mean(ics))

@@ -47,3 +47,6 @@ def test_config_values_agree_with_platform_config() -> None:
     assert config.REQUIRE_INDEX_MEMBERSHIP == research["require_index_membership"]
     assert config.MIN_UNIVERSE_HISTORY_DAYS == research["min_universe_history_days"]
     assert config.UNIVERSE_MEMBERSHIP_PATH == research["universe_membership_path"]
+    assert config.NESTED_WALK_FORWARD == research["nested_walk_forward"]
+    assert config.NESTED_MIN_TRAIN_YEARS == research["nested_min_train_years"]
+    assert config.NESTED_USE_MONTH_END_SUBSET == research["nested_use_month_end_subset"]

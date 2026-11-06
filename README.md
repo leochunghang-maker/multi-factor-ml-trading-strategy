@@ -261,9 +261,9 @@ The research stack combines transparent factor models with machine-learning rank
 - 21-day rolling volatility.
 - Random Forest return-ranking model using 1-month forward returns as labels.
 - XGBoost training entrypoint for comparison experiments.
-- Expanding-window walk-forward validation.
+- Expanding-window walk-forward validation with **nested / anchored model selection**.
 
-The reported walk-forward schedule is:
+The reported outer walk-forward schedule is:
 
 | Train Period | Test Period |
 |---|---|
@@ -273,6 +273,15 @@ The reported walk-forward schedule is:
 | 2018-2024 | 2025 |
 | 2018-2025 | 2026 (through 2026-09-30) |
 
+**Nested selection (default on):** for each outer year fold, a small candidate menu
+(`ridge_1`, `rf_shallow`, `rf_default`) is scored on **inner** expanding year folds that use
+only the purged outer training sample (month-end subset for speed). The winner is refit on the
+full outer train set and then applied to the outer test year. Purge/embargo (21-day labels)
+apply to both outer and inner folds. This reduces hyperparameter peeking into the test year; it
+does **not** remove bias from the candidate menu itself or from repeated research iteration.
+Selection log: `results/reports/nested_model_selection.csv`. Disable with
+`research.nested_walk_forward: false`.
+
 Forward returns are used only as labels or realized outcomes. They are not used to form live
 signals.
 
@@ -280,7 +289,7 @@ signals.
 
 - Factor research: momentum, short-term return, volatility, and ML-derived ranking features.
 - IC testing: rank information coefficient analysis for factor quality review.
-- Walk-forward validation: expanding-window training and out-of-sample test periods.
+- Walk-forward validation: expanding-window training, nested/anchored inner model selection, and out-of-sample test periods.
 - Transaction-cost-aware backtesting: turnover and cost assumptions included in strategy evaluation.
 - Volatility targeting: volatility-adjusted sizing utilities and risk-managed backtest outputs.
 - Portfolio constraints: long-only weights, max position sizing, exposure diagnostics,
@@ -339,23 +348,25 @@ These are research outputs from the current committed backtest series, not forwa
 claims. Interpret them with the limitations below (residual survivorship bias, simplified
 transaction costs, idealized execution).
 
-### Walk-forward ML (regenerated 2026-11-06, + borrow fee)
+### Walk-forward ML (regenerated 2026-11-06, nested selection + borrow)
 
 From `results/walk_forward_metrics.csv`, regenerated from Yahoo Finance prices (2018-01-02 →
 2026-10-30) with month-end rebalancing, non-overlapping month-end → next-month-end returns,
 purge/embargo of 21-day labels, research long/short gross exposure 2.0 (100% long + 100% short,
-`research.long_short_gross_exposure` in `config/platform_config.json`), the PIT eligibility filter, and monthly stock-borrow on short gross
-(`annual_borrow_bps=100`). This is distinct from the paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`, which these
+`research.long_short_gross_exposure` in `config/platform_config.json`), the PIT eligibility filter, monthly stock-borrow on short gross
+(`annual_borrow_bps=100`), and **nested model selection** among ridge / shallow RF / default RF.
+This is distinct from the paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`, which these
 research backtests do not apply.
-Sample: **2022-01-31 → 2026-09-30** (57 month-end periods).
+Sample: **2022-01-31 → 2026-09-30** (57 month-end periods). Nested choices: 2022=`rf_default`,
+2023–2026=`ridge_1`.
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 17.92% |
-| Annual volatility | 27.60% |
-| Sharpe ratio | 0.65 |
-| Max drawdown | -25.95% |
-| Cumulative return | 103.08% |
+| Annual return | 14.46% |
+| Annual volatility | 34.52% |
+| Sharpe ratio | 0.42 |
+| Max drawdown | -26.32% |
+| Cumulative return | 57.54% |
 
 ### Older narrative snapshot (not reproduced by current artifacts)
 
@@ -505,6 +516,8 @@ python src/operations/health.py
   (2019-01-31 → 2026-09-30); names below the threshold were flagged on 62 rebalances (max 3
   names). Constrained gross after renormalisation is unchanged (mean 0.9246).
 - Sector classifications are maintained locally and should be reviewed against a benchmark provider.
+- Nested walk-forward reduces hyperparameter peeking into each outer test year, but the candidate
+  menu is still researcher-chosen and repeated research iteration can still overfit the process.
 - Walk-forward validation is stronger than a static split, but it does not remove all model-selection
   or research-iteration bias.
 - The platform is designed for local research and simulated paper trading, not production deployment

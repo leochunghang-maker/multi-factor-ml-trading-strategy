@@ -220,6 +220,10 @@ MIN_UNIVERSE_HISTORY_DAYS = int(_RESEARCH.get("min_universe_history_days", 63))
 UNIVERSE_MEMBERSHIP_PATH = str(
     _RESEARCH.get("universe_membership_path", UNIVERSE_MEMBERSHIP_PATH)
 )
+NESTED_WALK_FORWARD = bool(_RESEARCH.get("nested_walk_forward", True))
+NESTED_MIN_TRAIN_YEARS = int(_RESEARCH.get("nested_min_train_years", 2))
+NESTED_USE_MONTH_END_SUBSET = bool(_RESEARCH.get("nested_use_month_end_subset", True))
+NESTED_SELECTION_REPORT_PATH = "results/reports/nested_model_selection.csv"
 
 SECTOR_MAP = {
     "AAPL": "Information Technology",
