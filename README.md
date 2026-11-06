@@ -330,45 +330,50 @@ complete production risk system.
 Headline multi-factor metrics below are recomputed from the committed artifact
 `results/multi_factor_results.csv` (`portfolio_return` column) using the project's
 `calculate_performance_metrics` helper, with the PIT eligibility filter enabled
-(tradability + month-end S&P 500 membership overlay) and **name-level HTB borrow tiers** (GC default `annual_borrow_bps=100`). Sample window:
+(tradability + month-end S&P 500 membership overlay), **name-level HTB borrow tiers**
+(GC default `annual_borrow_bps=100`), and **sector-neutral portfolio construction**
+(`research.sector_neutral` + `max_sector_net_exposure=0.15`). Sample window:
 **2019-01-31 → 2026-09-30** (93 month-end observations). The ending wealth level in
-`results/multi_factor_equity_curve.csv` is **1.2083**, matching the **20.83%** cumulative
+`results/multi_factor_equity_curve.csv` is **1.2839**, matching the **28.39%** cumulative
 return. Regenerating with `make report` writes the same family of numbers to local
 `results/reports/summary_report.md` / `.csv` (those paths are gitignored generated outputs).
 
 | Metric | Value from `results/multi_factor_results.csv` |
 |---|---:|
-| Annual return | 6.68% |
-| Annual volatility | 28.44% |
-| Sharpe ratio | 0.23 |
-| Max drawdown | -43.21% |
-| Cumulative return | 20.83% |
-| Average one-way turnover | 136.13% |
-| Latest turnover | 140.00% |
-| Beta vs SPY (month-end holding returns) | -0.30 |
+| Annual return | 6.60% |
+| Annual volatility | 25.57% |
+| Sharpe ratio | 0.26 |
+| Max drawdown | -43.95% |
+| Cumulative return | 28.39% |
+| Average one-way turnover | 132.75% |
+| Latest turnover | 152.26% |
+| Beta vs SPY (month-end holding returns) | n/a (SPY not in price panel) |
 
 These are research outputs from the current committed backtest series, not forward-looking
-claims. Interpret them with the limitations below (residual survivorship bias, simplified
-transaction costs, idealized execution).
+claims. Interpret them with the limitations below (residual survivorship bias, static sector map,
+simplified transaction costs, idealized execution).
 
-### Walk-forward ML (regenerated 2026-11-06, cost-aware nested + HTB tiers)
+### Walk-forward ML (regenerated 2026-11-06, sector-neutral + cost-aware nested + HTB)
 
 From `results/walk_forward_metrics.csv`, regenerated from Yahoo Finance prices (2018-01-02 →
 2026-10-30) with month-end rebalancing, non-overlapping month-end → next-month-end returns,
 purge/embargo of 21-day labels, research long/short gross exposure 2.0 (100% long + 100% short,
 `research.long_short_gross_exposure` in `config/platform_config.json`), the PIT eligibility filter,
-name-level HTB borrow tiers (ADV$+vol proxy + overrides; GC=`annual_borrow_bps`), and **nested model selection** with inner score `cost_aware_sharpe`. This is distinct from the paper-trading cap
-`MAX_GROSS_EXPOSURE = 1.0`, which these research backtests do not apply.
+name-level HTB borrow tiers, **sector-neutral score demeaning + sector net-exposure cap (0.15)**,
+and **nested model selection** with inner score `cost_aware_sharpe`. This is distinct from the
+paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`, which these research backtests do not apply.
 Sample: **2022-01-31 → 2026-09-30** (57 month-end periods). Nested choices under
-`cost_aware_sharpe`: **2022–2026 = `rf_default`** (ridge won under raw `rank_ic` previously).
+`cost_aware_sharpe` after sector neutrality: **2022–2023 = `rf_shallow`**, **2024–2026 = `rf_default`**.
+Sector neutrality removed industry concentration that previously inflated walk-forward returns;
+max drawdown improved materially while Sharpe/return fell versus the HTB-only baseline.
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 17.42% |
-| Annual volatility | 27.60% |
-| Sharpe ratio | 0.63 |
-| Max drawdown | -26.26% |
-| Cumulative return | 98.55% |
+| Annual return | 6.34% |
+| Annual volatility | 17.24% |
+| Sharpe ratio | 0.37 |
+| Max drawdown | -15.82% |
+| Cumulative return | 26.11% |
 
 
 ### Older narrative snapshot (not reproduced by current artifacts)
@@ -505,8 +510,8 @@ python src/operations/health.py
   `annual_borrow_bps` (100) remains the GC rate; rebate/cash financing default to 0.
 - Paper/sim is long-only, so short borrow is usually **0** there; daily accrual still runs on
   any short market value and on margin debit `max(0, -cash)`.
-- Name-level hard-to-borrow fees, locate failures, taxes, and prime-broker financing schedules are
-  still not modeled (only a flat book-level borrow/rebate/cash-financing schedule).
+- Live locate failures, prime-broker schedules, and taxes are still not modeled; HTB tiers are a
+  proxy only (see `data/borrow_tier_map.csv`).
 - Simulated fills (paper/sim only) pay fixed slippage (5 bps) + half-spread (`half_spread_bps`, 2 bps)
   + square-root impact `impact_coefficient_bps * sqrt(notional / 63-day ADV$)` (100 bps coefficient),
   all set in `config/platform_config.json` `execution`. Full-history monthly multi-day simulation
@@ -521,7 +526,11 @@ python src/operations/health.py
   filter (`MIN_AVERAGE_DAILY_DOLLAR_VOLUME = $25M`) is active on all 93 month-end rebalances
   (2019-01-31 → 2026-09-30); names below the threshold were flagged on 62 rebalances (max 3
   names). Constrained gross after renormalisation is unchanged (mean 0.9246).
-- Sector classifications are maintained locally and should be reviewed against a benchmark provider.
+- Sector classifications are a **static** map in `data/sector_map.csv` (exported from
+  `src/config.py` `SECTOR_MAP`; metadata in `data/sector_map_source.json`). Research L/S demeans
+  scores within sector before ranking (`research.sector_neutral`) and caps absolute net sector
+  exposure (`research.max_sector_net_exposure`, default 0.15), restoring gross only when feasible.
+  This is **not** point-in-time historical GICS — sector migrations and reconstitutions are not modeled.
 - Nested walk-forward reduces hyperparameter peeking into each outer test year, but the candidate
   menu is still researcher-chosen and repeated research iteration can still overfit the process.
 - Walk-forward validation is stronger than a static split, but it does not remove all model-selection

@@ -100,7 +100,12 @@ def test_daily_financing_dollars_and_broker_accrual() -> None:
     assert broker.cash == pytest.approx(50_000.0 - row["financing_cost"])
 
 
-def test_research_returns_subtract_monthly_borrow() -> None:
+def test_research_returns_subtract_monthly_borrow(monkeypatch) -> None:
+    import src.portfolio.portfolio as portfolio_mod
+
+    # Keep short gross at the requested 1.0 so the borrow drag is exact.
+    monkeypatch.setattr(portfolio_mod, "SECTOR_NEUTRAL", False)
+    monkeypatch.setattr(portfolio_mod, "MAX_SECTOR_NET_EXPOSURE", 99.0)
     dates = pd.date_range("2020-01-31", periods=3, freq="ME")
     tickers = [f"T{i}" for i in range(6)]
     momentum = pd.DataFrame(1.0, index=dates, columns=tickers)
@@ -108,6 +113,8 @@ def test_research_returns_subtract_monthly_borrow() -> None:
     for i, t in enumerate(tickers):
         momentum[t] = float(i)
     mean_reversion = pd.DataFrame(0.0, index=dates, columns=tickers)
+    for i, t in enumerate(tickers):
+        mean_reversion[t] = float(i) * 0.1
     forward = pd.DataFrame(0.01, index=dates, columns=tickers)
 
     with_borrow = build_multi_factor_long_short_returns(

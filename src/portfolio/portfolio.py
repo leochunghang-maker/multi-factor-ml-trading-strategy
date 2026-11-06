@@ -4,8 +4,12 @@ from src.config import (
     ANNUAL_BORROW_BPS,
     ANNUAL_CASH_FINANCING_BPS,
     ANNUAL_SHORT_REBATE_BPS,
+    MAX_SECTOR_NET_EXPOSURE,
     PERIODS_PER_YEAR,
+    SECTOR_MAP_PATH,
+    SECTOR_NEUTRAL,
 )
+from pathlib import Path
 from src.execution.financing import financing_cost_from_weights
 
 
@@ -72,6 +76,94 @@ def _eligible_on_date(
 
 
 
+
+def load_sector_map(path: str | None = None) -> dict[str, str]:
+    """Load ticker→sector map from CSV when present, else ``src.config.SECTOR_MAP``."""
+    from src.config import SECTOR_MAP
+
+    map_path = Path(path or SECTOR_MAP_PATH)
+    if map_path.exists():
+        frame = pd.read_csv(map_path)
+        return {
+            str(row.ticker).upper().replace(".", "-"): str(row.sector)
+            for row in frame.itertuples(index=False)
+        }
+    return dict(SECTOR_MAP)
+
+
+def demean_scores_by_sector(
+    scores: pd.Series,
+    sector_map: dict[str, str] | None = None,
+) -> pd.Series:
+    """Subtract each name's sector-mean score (cross-sectional sector neutralization)."""
+    if scores.empty:
+        return scores.copy()
+    sectors = sector_map or load_sector_map()
+    labels = pd.Index(
+        [sectors.get(str(ticker).upper().replace(".", "-"), "Unknown") for ticker in scores.index]
+    )
+    demeaned = scores.copy().astype(float)
+    for sector in pd.unique(labels):
+        mask = labels == sector
+        group = demeaned.loc[mask]
+        demeaned.loc[mask] = group - group.mean()
+    return demeaned
+
+
+def apply_sector_net_exposure_limits(
+    weights: pd.Series,
+    max_sector_net_exposure: float,
+    sector_map: dict[str, str] | None = None,
+    target_gross_exposure: float | None = None,
+) -> pd.Series:
+    """Cap |net| sector exposure via within-sector shifts; restore gross if feasible.
+
+    Excess sector net is removed by a uniform within-sector weight shift so the
+    residual |net| equals ``max_sector_net_exposure``. Gross is then scaled up
+    toward ``target_gross_exposure`` only as far as the sector-net caps allow —
+    a pure one-sector-long / one-sector-short book therefore keeps lower gross
+    rather than re-inflating banned sector bets.
+    """
+    if weights.empty:
+        return weights.copy()
+    if max_sector_net_exposure < 0:
+        raise ValueError("max_sector_net_exposure must be non-negative")
+
+    sectors = sector_map or load_sector_map()
+    if target_gross_exposure is None:
+        target_gross = float(weights.abs().sum())
+    else:
+        target_gross = float(target_gross_exposure)
+
+    constrained = weights.astype(float).copy()
+    sector_names: dict[str, list] = {}
+    for symbol in constrained.index:
+        key = sectors.get(str(symbol).upper().replace(".", "-"), "Unknown")
+        sector_names.setdefault(key, []).append(symbol)
+
+    for names in sector_names.values():
+        net = float(constrained.loc[names].sum())
+        if abs(net) <= max_sector_net_exposure + 1e-12:
+            continue
+        target_net = max_sector_net_exposure if net > 0 else -max_sector_net_exposure
+        constrained.loc[names] = constrained.loc[names] - (net - target_net) / len(names)
+
+    gross = float(constrained.abs().sum())
+    if gross <= 1e-12 or target_gross <= 0:
+        return constrained
+
+    allowed_scale = target_gross / gross
+    for names in sector_names.values():
+        net = float(constrained.loc[names].sum())
+        if abs(net) > 1e-12:
+            allowed_scale = min(allowed_scale, max_sector_net_exposure / abs(net))
+    if allowed_scale > 0:
+        constrained *= allowed_scale
+    return constrained
+
+
+
+
 def select_long_short(
     scores: pd.Series,
     long_count: int,
@@ -91,8 +183,17 @@ def long_short_return_from_scores(
     long_count: int,
     short_count: int,
     transaction_cost: float = 0.0,
+    *,
+    sector_neutral: bool | None = None,
+    sector_map: dict[str, str] | None = None,
 ) -> dict[str, float]:
-    long_stocks, short_stocks = select_long_short(scores, long_count, short_count)
+    use_neutral = SECTOR_NEUTRAL if sector_neutral is None else bool(sector_neutral)
+    ranking_scores = (
+        demean_scores_by_sector(scores, sector_map or load_sector_map())
+        if use_neutral
+        else scores
+    )
+    long_stocks, short_stocks = select_long_short(ranking_scores, long_count, short_count)
     long_return = realized_returns[long_stocks].mean()
     short_return = realized_returns[short_stocks].mean()
     gross_return = long_return - short_return
@@ -110,13 +211,34 @@ def equal_weight_long_short_weights(
     long_count: int,
     short_count: int,
     gross_exposure: float = 2.0,
+    *,
+    sector_neutral: bool | None = None,
+    max_sector_net_exposure: float | None = None,
+    sector_map: dict[str, str] | None = None,
 ) -> pd.Series:
     # gross_exposure splits evenly: gross 2.0 means 100% long and 100% short.
+    # Optional sector neutralization demeans scores within sector before ranking;
+    # optional net-exposure caps shrink concentrated sector bets then restore gross.
+    use_neutral = SECTOR_NEUTRAL if sector_neutral is None else bool(sector_neutral)
+    net_cap = (
+        MAX_SECTOR_NET_EXPOSURE
+        if max_sector_net_exposure is None
+        else float(max_sector_net_exposure)
+    )
+    sectors = sector_map or load_sector_map()
+    ranking_scores = demean_scores_by_sector(scores, sectors) if use_neutral else scores
     side = gross_exposure / 2
-    long_stocks, short_stocks = select_long_short(scores, long_count, short_count)
+    long_stocks, short_stocks = select_long_short(ranking_scores, long_count, short_count)
     weights = pd.Series(0.0, index=scores.index)
     weights.loc[long_stocks] = side / long_count
     weights.loc[short_stocks] = -side / short_count
+    if net_cap is not None and net_cap < float("inf"):
+        weights = apply_sector_net_exposure_limits(
+            weights,
+            max_sector_net_exposure=net_cap,
+            sector_map=sectors,
+            target_gross_exposure=gross_exposure,
+        )
     return weights
 
 
@@ -169,13 +291,22 @@ def build_factor_long_short_returns(
                 previous_weights,
                 transaction_cost,
             )
-            row = long_short_return_from_scores(
-                score_row[valid],
-                future_returns[valid],
-                long_count,
-                short_count,
-                transaction_cost=0.0,
+            aligned_returns = future_returns[valid].reindex(weights.index).fillna(0.0)
+            long_mask = weights > 0
+            short_mask = weights < 0
+            long_w = weights.loc[long_mask]
+            short_w = weights.loc[short_mask]
+            long_return = (
+                float((long_w * aligned_returns.loc[long_mask]).sum() / long_w.sum())
+                if float(long_w.sum()) > 0
+                else 0.0
             )
+            short_return = (
+                float(((-short_w) * aligned_returns.loc[short_mask]).sum() / (-short_w).sum())
+                if float((-short_w).sum()) > 0
+                else 0.0
+            )
+            gross_return = float((weights * aligned_returns).sum())
             name_borrow = _borrow_bps_on_date(borrow_bps_panel, date, weights.index)
             financing_cost = financing_cost_from_weights(
                 weights,
@@ -185,12 +316,12 @@ def build_factor_long_short_returns(
                 periods_per_year=periods_per_year,
                 borrow_bps_by_symbol=name_borrow,
             )
-            portfolio_return = row["portfolio_return"] - transaction_cost_amount - financing_cost
+            portfolio_return = gross_return - transaction_cost_amount - financing_cost
             portfolio_returns.append({
                 "date": date,
-                "long_return": row["long_return"],
-                "short_return": row["short_return"],
-                "gross_return": row["portfolio_return"],
+                "long_return": long_return,
+                "short_return": short_return,
+                "gross_return": gross_return,
                 "transaction_cost": transaction_cost_amount,
                 "financing_cost": financing_cost,
                 "traded_gross_exposure": traded_gross_exposure,
@@ -312,8 +443,13 @@ def build_prediction_long_short_returns(
             if monthly_data.empty:
                 continue
 
-        long_stocks = monthly_data.nlargest(long_count, score_column)
-        short_stocks = monthly_data.nsmallest(short_count, score_column)
+        ranking = monthly_data.set_index("ticker")[score_column]
+        if SECTOR_NEUTRAL:
+            ranking = demean_scores_by_sector(ranking)
+        ranked = monthly_data.copy()
+        ranked["_rank_score"] = ranked["ticker"].map(ranking)
+        long_stocks = ranked.nlargest(long_count, "_rank_score")
+        short_stocks = ranked.nsmallest(short_count, "_rank_score")
 
         long_return = long_stocks[return_column].mean()
         short_return = short_stocks[return_column].mean()
@@ -322,6 +458,12 @@ def build_prediction_long_short_returns(
         weights = pd.Series(0.0, index=monthly_data["ticker"])
         weights.loc[long_stocks["ticker"]] = side / long_count
         weights.loc[short_stocks["ticker"]] = -side / short_count
+        if MAX_SECTOR_NET_EXPOSURE < float("inf"):
+            weights = apply_sector_net_exposure_limits(
+                weights,
+                max_sector_net_exposure=MAX_SECTOR_NET_EXPOSURE,
+                target_gross_exposure=gross_exposure,
+            )
         transaction_cost_amount, traded_gross_exposure = transaction_cost_from_weight_change(
             weights,
             previous_weights,
@@ -375,7 +517,6 @@ def build_multi_factor_long_short_returns(
     portfolio_returns = []
     monthly_dates = month_end_trading_dates(momentum)
     previous_weights = None
-    side = gross_exposure / 2
 
     for date in monthly_dates:
         mom = momentum.loc[date]
@@ -407,14 +548,8 @@ def build_multi_factor_long_short_returns(
                 previous_weights,
                 transaction_cost,
             )
-            row = long_short_return_from_scores(
-                composite_score,
-                future_returns,
-                long_count,
-                short_count,
-                transaction_cost=0.0,
-            )
-            gross_return = side * row["portfolio_return"]
+            aligned_returns = future_returns.reindex(weights.index).fillna(0.0)
+            gross_return = float((weights * aligned_returns).sum())
             name_borrow = _borrow_bps_on_date(borrow_bps_panel, date, weights.index)
             financing_cost = financing_cost_from_weights(
                 weights,

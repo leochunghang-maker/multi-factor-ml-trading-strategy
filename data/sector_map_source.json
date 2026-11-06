@@ -1,0 +1,23 @@
+{
+  "description": "Static GICS-style sector labels for the current TICKERS list.",
+  "source": "src/config.py SECTOR_MAP (maintained locally; labels follow common S&P/GICS sectors).",
+  "path": "data/sector_map.csv",
+  "limitations": [
+    "Not point-in-time: historical sector changes and reconstitutions are not modeled.",
+    "Unknown tickers map to 'Unknown' and are neutralized within that bucket."
+  ],
+  "n_tickers": 101,
+  "sectors": [
+    "Communication Services",
+    "Consumer Discretionary",
+    "Consumer Staples",
+    "Energy",
+    "Financials",
+    "Health Care",
+    "Industrials",
+    "Information Technology",
+    "Materials",
+    "Real Estate",
+    "Utilities"
+  ]
+}

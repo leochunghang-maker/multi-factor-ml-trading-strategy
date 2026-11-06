@@ -20,7 +20,11 @@
     "nested_min_train_years": 2,
     "nested_use_month_end_subset": true,
     "nested_note": "Each outer year fold selects among a small candidate set using anchored inner year folds on purged training data only (month-end subset for speed). Default inner score is cost_aware_sharpe: annualized Sharpe of equal-weight L/S period returns after turnover*transaction_cost and stock-borrow/financing. Alternatives: icir, rank_ic. Does not eliminate candidate-menu bias.",
-    "nested_inner_score": "cost_aware_sharpe"
+    "nested_inner_score": "cost_aware_sharpe",
+    "sector_neutral": true,
+    "max_sector_net_exposure": 0.15,
+    "sector_map_path": "data/sector_map.csv",
+    "sector_note": "Research L/S demeans scores within sector before ranking and caps |net| sector exposure (default 0.15 of NAV) then restores long/short gross. Sector map is static (data/sector_map.csv) \u2014 not historical PIT GICS."
   },
   "execution": {
     "mode": "local_simulated_paper_only",

@@ -29,5 +29,7 @@ data/*.csv
 !data/universe_membership_source.json
 !data/borrow_tier_overrides.csv
 !data/borrow_tier_map.csv
+!data/sector_map.csv
+!data/sector_map_source.json
 
 .venv/

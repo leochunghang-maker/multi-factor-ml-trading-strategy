@@ -6,14 +6,14 @@ This project implements a modular quantitative equity research pipeline for a lo
 
 Headline multi-factor metrics in this checkout are taken from committed
 `results/multi_factor_results.csv` over **2019-01-31 → 2026-09-30** with the PIT
-eligibility filter: annual return **6.68%**, annual volatility **28.45%**, Sharpe
-ratio **0.23**, maximum drawdown **-43.21%**, beta versus SPY about **-0.30**, and
-cumulative return **20.83%** (matching ending wealth **1.2083** in
-`results/multi_factor_equity_curve.csv`). Corrected walk-forward metrics are in
-`results/walk_forward_metrics.csv` (annual return **17.42%**, Sharpe **0.63**,
-max drawdown **-26.26%**, cumulative **98.55%** over 57 periods). Older narrative
-snapshots (multi-factor Sharpe **1.16** / **0.39**, walk-forward **0.88** / **0.70**)
-are superseded.
+eligibility filter, HTB borrow tiers, and **sector-neutral construction**: annual
+return **6.60%**, annual volatility **25.57%**, Sharpe ratio **0.26**, maximum
+drawdown **-43.95%**, and cumulative return **28.39%** (ending wealth **1.2839** in
+`results/multi_factor_equity_curve.csv`). Walk-forward metrics in
+`results/walk_forward_metrics.csv`: annual return **6.34%**, Sharpe **0.37**,
+max drawdown **-15.82%**, cumulative **26.11%** over 57 periods. Older narrative
+snapshots (multi-factor Sharpe **1.16** / **0.39** / **0.23**, walk-forward **0.88** /
+**0.70** / **0.63**) are superseded.
 
 The results are research outputs from a prototype workflow and should be interpreted with realistic caveats: the base ticker list is still a modern S&P 100-style snapshot (residual survivorship), eligibility uses an S&P 500 membership proxy rather than official S&P 100 PIT constituents, prices come from Yahoo Finance, transaction costs are simplified, and execution assumptions are idealized. They are not investment promises or live-trading claims.
 
@@ -85,7 +85,11 @@ For the multi-factor strategy:
 - Rebalance monthly.
 - Apply transaction costs of 10 bps per side.
 
-Equal weighting makes the portfolio construction transparent and easy to audit. It also avoids overfitting through complex optimizers, but it does not account for liquidity, borrow costs, factor constraints, sector neutrality, or capacity.
+Equal weighting makes the portfolio construction transparent and easy to audit. Research
+long/short books now optionally **demean scores by sector** before ranking and **cap absolute
+net sector exposure** (`research.sector_neutral`, `max_sector_net_exposure=0.15`) using the
+static map in `data/sector_map.csv`. Liquidity, capacity, and PIT sector membership are still
+not fully modeled.
 
 ## Machine Learning Framework
 
@@ -188,6 +192,13 @@ HTB=1000, special=3000 bps. Latest classification snapshot:
 prime-broker HTB feed.** Paper/sim remains long-only, so short borrow is usually
 zero there; the broker still supports per-name short accrual if shorts exist.
 
+### Sector Neutrality
+Research L/S construction demeans cross-sectional scores within each sector and then caps
+`|net|` sector exposure (default 0.15 of NAV), restoring overall gross only when the caps
+allow. The sector map is static (`data/sector_map.csv` / `SECTOR_MAP`) — **not** historical
+point-in-time GICS. Residual industry risk remains when a sector has few eligible names or when
+gross must be reduced to satisfy the net cap.
+
 ### Yahoo Finance Limitations
 
 Yahoo Finance is convenient for research prototypes, but it is not institutional market data. Potential issues include missing data, adjusted-price methodology differences, symbol mapping changes, restatements, and survivorship concerns.
@@ -205,36 +216,38 @@ The machine learning model uses a small feature set and a simple target. Walk-fo
 Source of truth for the multi-factor backtest in this repository checkout:
 `results/multi_factor_results.csv` (`portfolio_return`), sample
 **2019-01-31 → 2026-09-30** (93 month-end rows). Ending wealth in
-`results/multi_factor_equity_curve.csv` is **1.3997**.
+`results/multi_factor_equity_curve.csv` is **1.2839**.
 
 | Metric | Value from committed multi-factor results |
 |---|---:|
-| Annual Return | 6.68% |
-| Annual Volatility | 28.44% |
-| Sharpe Ratio | 0.23 |
-| Max Drawdown | -43.21% |
-| Cumulative Return | 20.83% |
-| Average One-Way Turnover | 134.73% |
-| Latest Turnover | 140.00% |
-| Beta vs SPY (summary report) | 0.72 |
+| Annual Return | 6.60% |
+| Annual Volatility | 25.57% |
+| Sharpe Ratio | 0.26 |
+| Max Drawdown | -43.95% |
+| Cumulative Return | 28.39% |
+| Average One-Way Turnover | 132.75% |
+| Latest Turnover | 152.26% |
 
 `make report` regenerates the same family of numbers into local
 `results/reports/summary_report.md` / `.csv` (gitignored).
 
-### Walk-forward ML (regenerated 2026-11-05)
+### Walk-forward ML (regenerated 2026-11-06, sector-neutral)
 
 From `results/walk_forward_metrics.csv`, regenerated from Yahoo Finance prices (2018-01-02 →
 2026-10-30) with month-end rebalancing, non-overlapping month-end → next-month-end returns,
-purge/embargo of 21-day labels, and research long/short gross exposure 2.0 (100% long + 100% short, `research.long_short_gross_exposure` in `config/platform_config.json`). This is distinct from the paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`, which these research backtests do not apply.
+purge/embargo of 21-day labels, research long/short gross exposure 2.0, PIT eligibility, HTB
+borrow tiers, sector-neutral demeaning + net-exposure cap, and nested `cost_aware_sharpe`
+selection. Nested choices: 2022–2023=`rf_shallow`, 2024–2026=`rf_default`. Distinct from the
+paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`.
 Sample: **2022-01-31 → 2026-09-30** (57 month-end periods).
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 17.42% |
-| Annual volatility | 27.60% |
-| Sharpe ratio | 0.63 |
-| Max drawdown | -26.26% |
-| Cumulative return | 98.55% |
+| Annual return | 6.34% |
+| Annual volatility | 17.24% |
+| Sharpe ratio | 0.37 |
+| Max drawdown | -15.82% |
+| Cumulative return | 26.11% |
 
 ### Older narrative snapshot (not current)
 
@@ -283,8 +296,8 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 
 ## Key Findings
 
-- From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **6.68% annual return**, **0.23 Sharpe**, **-43.21% max drawdown**, and **20.83% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
-- Corrected walk-forward ML (month-end, purge/embargo, research L/S gross 2.0) shows **17.42% annual return**, **0.63 Sharpe**, **-26.26% max drawdown**, **98.55% cumulative** over 2022-01-31 → 2026-09-30 (57 periods); older **23.1% / 0.88 Sharpe** figures are superseded.
+- From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **6.60% annual return**, **0.26 Sharpe**, **-43.95% max drawdown**, and **28.39% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
+- Sector-neutral walk-forward ML shows **6.34% annual return**, **0.37 Sharpe**, **-15.82% max drawdown**, **26.11% cumulative** over 2022-01-31 → 2026-09-30 (57 periods); HTB-only walk-forward (**17.42% / 0.63 Sharpe**) and older **23.1% / 0.88 Sharpe** figures are superseded.
 - The architecture now separates data, features, models, portfolio construction, backtests, risk, and reporting into reusable modules.
 - Risk analytics add review context by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
 - The research remains a prototype until official S&P 100 PIT constituents (not only an S&P 500 proxy), more realistic trading costs, borrow assumptions, and production-grade data are added.
@@ -293,7 +306,7 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 
 - Extend eligibility to official S&P 100 point-in-time constituents and include delisted/removed names in the price panel.
 - Add a realistic transaction cost model based on spreads, ADV, volatility, market impact, and short borrow costs.
-- Add sector, industry, beta, and style-factor exposure reporting.
+- Replace the static sector map with point-in-time GICS and add beta / style-factor exposure reporting.
 - Add position-level and rebalance-level audit trails.
 - Add benchmark-relative attribution and factor contribution analysis.
 - Add liquidity and capacity constraints.
