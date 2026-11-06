@@ -1,6 +1,6 @@
 # System Status
 
-- Generated at: 2026-11-05T07:36:44+00:00
+- Generated at: 2026-11-06T12:26:27+00:00
 - Overall status: ERROR
 
 ## Findings
@@ -8,7 +8,7 @@
 - **ERROR** `missing_file`: Missing required file: results/live/latest_signals.csv
 - **ERROR** `missing_file`: Missing required file: results/simulation/latest_account_snapshot.csv
 - **ERROR** `missing_file`: Missing required file: results/simulation/execution_log.csv
-- **WARNING** `stale_data`: Latest price date 2026-10-30 is 6 days old; limit is 5.
+- **WARNING** `stale_data`: Latest price date 2026-10-30 is 7 days old; limit is 5.
 - **ERROR** `portfolio_state`: Latest account snapshot is missing.
 - **WARNING** `concentration`: No latest position snapshot available.
 

@@ -39,6 +39,7 @@ from src.config import (
     SLIPPAGE_BPS,
     TRANSACTION_COST,
 )
+from src.data.universe import build_eligibility_mask, eligible_tickers_on_date
 from src.data.io import load_price_data
 from src.portfolio.constraints import average_daily_dollar_volume, load_optional_volume_data
 from src.execution.simulated_broker import SimulatedBroker, SimulatedOrder
@@ -77,6 +78,7 @@ def build_daily_signal(
     mean_reversion: pd.DataFrame,
     daily_returns: pd.DataFrame,
     settings: SimulationSettings,
+    eligibility: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     warnings = []
     if date not in momentum.index:
@@ -86,6 +88,9 @@ def build_daily_signal(
     short_term_momentum = -mean_reversion.loc[date]
     volatility = daily_returns.loc[:date].tail(21).std()
     valid = mom.notna() & short_term_momentum.notna() & volatility.notna()
+    if eligibility is not None:
+        allowed = set(eligible_tickers_on_date(eligibility, date))
+        valid = valid & pd.Series(mom.index.isin(list(allowed)), index=mom.index)
     if valid.sum() < settings.max_positions:
         warnings.append(
             f"Only {int(valid.sum())} valid signal names on {date.date()}; required {settings.max_positions}."
@@ -331,6 +336,7 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
     run_id = metadata["run_id"]
     log_event("simulation_started", "Multi-day simulation started.", run_id=run_id)
     full_prices = load_price_data(PRICE_DATA_PATH).dropna(how="all")
+    eligibility = build_eligibility_mask(full_prices)
     factors = calculate_factor_frames(full_prices)
     daily_returns = factors["daily_returns"]
     market_proxy = daily_returns.mean(axis=1)
@@ -392,6 +398,7 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
                 factors["mean_reversion_1m"],
                 daily_returns,
                 settings,
+                eligibility=eligibility,
             )
             for message in signal_warnings:
                 warning_rows.append({"date": date, "type": "SIGNAL_WARNING", "message": message})

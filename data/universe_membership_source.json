@@ -1,0 +1,31 @@
+{
+  "description": "Month-end S&P 500 membership flags for this repo's static ticker list. S&P 100 is a subset of S&P 500, so non-members are excluded from the research universe on that date to reduce (not eliminate) survivorship bias.",
+  "source_repo": "https://github.com/chinobing/historical_sp500_constituents",
+  "source_file": "sp_500_historical_components.csv",
+  "source_license_note": "Upstream Wikipedia-derived historical constituents; verify license before redistribution beyond this research repo.",
+  "generated_for_start": "2018-01-01",
+  "generated_for_end": "2026-11-01",
+  "aliases_applied": {
+    "META": [
+      "META",
+      "FB"
+    ],
+    "RTX": [
+      "RTX",
+      "UTX"
+    ],
+    "BRK-B": [
+      "BRK-B",
+      "BRK.B",
+      "BRK/B"
+    ]
+  },
+  "rows": 10644,
+  "month_ends": 109,
+  "tickers": 101,
+  "limitations": [
+    "Membership is S&P 500, not official S&P 100 point-in-time constituents.",
+    "Names that left the index and are absent from today's static TICKERS list are still missing (residual survivorship).",
+    "Ticker renames are handled only for the aliases listed in aliases_applied."
+  ]
+}

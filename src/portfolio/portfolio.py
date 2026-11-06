@@ -25,6 +25,26 @@ def month_end_holding_period_returns(prices: pd.DataFrame) -> pd.DataFrame:
     return monthly_prices.shift(-1) / monthly_prices - 1
 
 
+def _eligible_on_date(
+    eligibility: pd.DataFrame | None,
+    date,
+    universe: pd.Index,
+) -> pd.Series:
+    """Boolean Series aligned to ``universe``; all-True when eligibility is None."""
+    if eligibility is None:
+        return pd.Series(True, index=universe)
+    stamp = pd.Timestamp(date)
+    if stamp not in eligibility.index:
+        prior = eligibility.index[eligibility.index <= stamp]
+        if len(prior) == 0:
+            return pd.Series(False, index=universe)
+        stamp = prior[-1]
+    row = eligibility.loc[stamp].reindex(universe)
+    return row.fillna(False).astype(bool)
+
+
+
+
 def select_long_short(
     scores: pd.Series,
     long_count: int,
@@ -94,6 +114,7 @@ def build_factor_long_short_returns(
     min_assets: int,
     transaction_cost: float = 0.0,
     return_column: str = "portfolio_return",
+    eligibility: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     portfolio_returns = []
     monthly_dates = month_end_trading_dates(scores)
@@ -102,7 +123,8 @@ def build_factor_long_short_returns(
     for date in monthly_dates:
         score_row = scores.loc[date]
         future_returns = forward_returns.loc[date]
-        valid = score_row.notna() & future_returns.notna()
+        eligible = _eligible_on_date(eligibility, date, score_row.index)
+        valid = score_row.notna() & future_returns.notna() & eligible
 
         if valid.sum() >= min_assets:
             weights = equal_weight_long_short_weights(
@@ -147,6 +169,7 @@ def build_multi_factor_long_short_weights(
     long_count: int,
     short_count: int,
     min_assets: int,
+    eligibility: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     portfolio_weights = []
     monthly_dates = month_end_trading_dates(momentum)
@@ -155,7 +178,8 @@ def build_multi_factor_long_short_weights(
         mom = momentum.loc[date]
         mr = mean_reversion.loc[date]
         future_returns = forward_returns.loc[date]
-        valid = mom.notna() & mr.notna() & future_returns.notna()
+        eligible = _eligible_on_date(eligibility, date, mom.index)
+        valid = mom.notna() & mr.notna() & future_returns.notna() & eligible
 
         if valid.sum() >= min_assets:
             mom = mom[valid]
@@ -188,6 +212,7 @@ def build_prediction_long_short_returns(
     realized_returns: pd.DataFrame | None = None,
     rebalance_on_month_ends: bool = True,
     gross_exposure: float = 2.0,
+    eligibility: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Build long/short portfolio returns from cross-sectional predictions.
 
@@ -211,6 +236,17 @@ def build_prediction_long_short_returns(
         monthly_data = frame[frame["date"] == date]
         if monthly_data.empty:
             continue
+        if eligibility is not None:
+            allowed_tickers = _eligible_on_date(
+                eligibility,
+                date,
+                pd.Index(monthly_data["ticker"].unique()),
+            )
+            monthly_data = monthly_data[
+                monthly_data["ticker"].map(allowed_tickers).fillna(False)
+            ]
+            if monthly_data.empty:
+                continue
 
         if realized_returns is not None:
             if date not in realized_returns.index:
@@ -272,6 +308,7 @@ def build_multi_factor_long_short_returns(
     min_assets: int,
     transaction_cost: float,
     gross_exposure: float = 2.0,
+    eligibility: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     portfolio_returns = []
     monthly_dates = month_end_trading_dates(momentum)
@@ -282,7 +319,8 @@ def build_multi_factor_long_short_returns(
         mom = momentum.loc[date]
         mr = mean_reversion.loc[date]
         future_returns = forward_returns.loc[date]
-        valid = mom.notna() & mr.notna() & future_returns.notna()
+        eligible = _eligible_on_date(eligibility, date, mom.index)
+        valid = mom.notna() & mr.notna() & future_returns.notna() & eligible
 
         if valid.sum() >= min_assets:
             mom = mom[valid]

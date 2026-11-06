@@ -316,41 +316,45 @@ complete production risk system.
 
 Headline multi-factor metrics below are recomputed from the committed artifact
 `results/multi_factor_results.csv` (`portfolio_return` column) using the project's
-`calculate_performance_metrics` helper. Sample window: **2019-01-31 → 2026-09-30**
-(93 month-end observations). The ending wealth level in
-`results/multi_factor_equity_curve.csv` is **1.7063**, matching the **70.63%** cumulative
+`calculate_performance_metrics` helper, with the PIT eligibility filter enabled
+(tradability + month-end S&P 500 membership overlay). Sample window:
+**2019-01-31 → 2026-09-30** (93 month-end observations). The ending wealth level in
+`results/multi_factor_equity_curve.csv` is **1.3997**, matching the **39.97%** cumulative
 return. Regenerating with `make report` writes the same family of numbers to local
 `results/reports/summary_report.md` / `.csv` (those paths are gitignored generated outputs).
 
 | Metric | Value from `results/multi_factor_results.csv` |
 |---|---:|
-| Annual return | 11.31% |
-| Annual volatility | 28.97% |
-| Sharpe ratio | 0.39 |
-| Max drawdown | -39.12% |
-| Cumulative return | 70.63% |
-| Average one-way turnover | 134.73% |
+| Annual return | 8.57% |
+| Annual volatility | 28.44% |
+| Sharpe ratio | 0.30 |
+| Max drawdown | -40.69% |
+| Cumulative return | 39.97% |
+| Average one-way turnover | 136.13% |
 | Latest turnover | 140.00% |
-| Beta vs SPY (summary report) | 0.72 |
+| Beta vs SPY (month-end holding returns) | -0.30 |
 
 These are research outputs from the current committed backtest series, not forward-looking
-claims. Interpret them with the limitations below (survivorship bias, simplified transaction
-costs, idealized execution).
+claims. Interpret them with the limitations below (residual survivorship bias, simplified
+transaction costs, idealized execution).
 
-### Walk-forward ML (regenerated 2026-11-05)
+### Walk-forward ML (regenerated 2026-11-06)
 
 From `results/walk_forward_metrics.csv`, regenerated from Yahoo Finance prices (2018-01-02 →
 2026-10-30) with month-end rebalancing, non-overlapping month-end → next-month-end returns,
-purge/embargo of 21-day labels, and research long/short gross exposure 2.0 (100% long + 100% short, `research.long_short_gross_exposure` in `config/platform_config.json`). This is distinct from the paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`, which these research backtests do not apply.
+purge/embargo of 21-day labels, research long/short gross exposure 2.0 (100% long + 100% short,
+`research.long_short_gross_exposure` in `config/platform_config.json`), and the PIT eligibility
+filter. This is distinct from the paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`, which these
+research backtests do not apply.
 Sample: **2022-01-31 → 2026-09-30** (57 month-end periods).
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 20.24% |
-| Annual volatility | 28.73% |
-| Sharpe ratio | 0.70 |
-| Max drawdown | -27.28% |
-| Cumulative return | 115.00% |
+| Annual return | 18.92% |
+| Annual volatility | 27.60% |
+| Sharpe ratio | 0.69 |
+| Max drawdown | -25.48% |
+| Cumulative return | 112.68% |
 
 ### Older narrative snapshot (not reproduced by current artifacts)
 
@@ -468,8 +472,14 @@ python src/operations/health.py
 
 ## Known Limitations
 
-- The equity universe is static and S&P 100-style, so the research is not free of survivorship bias.
-- Historical constituents are not point-in-time.
+- The base ticker list is still today's S&P 100-style snapshot, so names that left the index and
+  are absent from `TICKERS` remain missing (residual survivorship bias).
+- Research and paper/sim construction now apply a point-in-time **eligibility** filter
+  (`src/data/universe.py`): valid price + `min_universe_history_days` (63) + month-end **S&P 500**
+  membership from `data/universe_sp500_membership.csv` (S&P 100 subset proxy; source metadata in
+  `data/universe_membership_source.json`). Official S&P 100 PIT constituents are not used.
+- Empty Yahoo columns (e.g. failed downloads) are dropped at data load; trailing all-NaN stretches
+  after a last valid print are treated as delisted for eligibility.
 - Yahoo Finance data is convenient for research but not institutional-grade market data.
 - Transaction costs and slippage are simplified assumptions.
 - Short borrow costs, financing costs, taxes, locates, and hard-to-borrow constraints are not fully
@@ -477,10 +487,11 @@ python src/operations/health.py
 - Simulated fills (paper/sim only) pay fixed slippage (5 bps) + half-spread (`half_spread_bps`, 2 bps)
   + square-root impact `impact_coefficient_bps * sqrt(notional / 63-day ADV$)` (100 bps coefficient),
   all set in `config/platform_config.json` `execution`. Full-history monthly multi-day simulation
-  with drawdown halt (skip rebalance at/below −10%; 2018-01-02 → 2026-10-30, 2220 days, 1391 trades,
-  10 DRAWDOWN_HALT events): final NAV **$459,706.56**, CAGR **18.91%**, daily Sharpe **0.928**,
-  MDD **−26.42%** at $100k scale. Prior no-halt run was final NAV $422,280.95 / CAGR 17.77% /
-  Sharpe 0.882. Research backtests use a flat `transaction_cost` and are unchanged.
+  with drawdown halt (skip rebalance at/below −10%) **and** PIT eligibility filter
+  (2018-01-02 → 2026-10-30, 2220 days, 1405 trades, 9 DRAWDOWN_HALT events): final NAV
+  **$366,120.57**, CAGR **15.84%**, daily Sharpe **0.819**, MDD **−27.01%** at $100k scale.
+  Prior drawdown-halt-only run (no PIT filter) was final NAV $459,706.56 / CAGR 18.91% /
+  Sharpe 0.928. Research backtests use a flat `transaction_cost` plus the same eligibility filter.
 - Intraday execution, queue position, partial fills and venue selection are not modeled; ADV uses
   the rebalance day's own volume in its 63-day window.
 - Liquidity filtering uses `data/volume_data.csv` (Yahoo share volume). With it, the 63-day ADV

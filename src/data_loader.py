@@ -7,6 +7,7 @@ import pandas as pd
 import yfinance as yf
 
 from src.config import END_DATE, PRICE_DATA_PATH, START_DATE, TICKERS, VOLUME_DATA_PATH
+from src.data.universe import drop_empty_price_columns
 
 
 def _download(tickers=TICKERS, start=START_DATE, end=END_DATE) -> pd.DataFrame:
@@ -42,7 +43,7 @@ def download_price_data(include_volume: bool = True):
 
     print("Downloading price data...")
     data = _download()
-    prices = data["Close"]
+    prices = drop_empty_price_columns(data["Close"])
     prices.to_csv(PRICE_DATA_PATH)
     print(f"Saved price data to {PRICE_DATA_PATH}")
     print(prices.tail())

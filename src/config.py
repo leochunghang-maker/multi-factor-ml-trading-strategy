@@ -72,6 +72,8 @@ MOMENTUM_PATH = "data/momentum_12m.csv"
 MEAN_REVERSION_PATH = "data/mean_reversion_1m.csv"
 FORWARD_RETURNS_PATH = "data/forward_returns_1m.csv"
 ML_DATASET_PATH = "data/ml_dataset.csv"
+UNIVERSE_MEMBERSHIP_PATH = "data/universe_sp500_membership.csv"
+UNIVERSE_MEMBERSHIP_SOURCE_PATH = "data/universe_membership_source.json"
 
 MOMENTUM_BACKTEST_PATH = "results/momentum_backtest.csv"
 MOMENTUM_EQUITY_CURVE_PATH = "results/equity_curve.png"
@@ -205,6 +207,13 @@ ML_EMBARGO_DAYS = 21
 # Research long/short backtests run 100% long + 100% short (gross 2.0). This is a
 # research setting only; paper trading is capped by MAX_GROSS_EXPOSURE (1.0).
 RESEARCH_LONG_SHORT_GROSS_EXPOSURE = float(_RESEARCH.get("long_short_gross_exposure", 2.0))
+# Survivorship mitigation: require S&P500 membership (S&P100 subset proxy) and
+# a minimum non-NaN price history before a name can enter research portfolios.
+REQUIRE_INDEX_MEMBERSHIP = bool(_RESEARCH.get("require_index_membership", True))
+MIN_UNIVERSE_HISTORY_DAYS = int(_RESEARCH.get("min_universe_history_days", 63))
+UNIVERSE_MEMBERSHIP_PATH = str(
+    _RESEARCH.get("universe_membership_path", UNIVERSE_MEMBERSHIP_PATH)
+)
 
 SECTOR_MAP = {
     "AAPL": "Information Technology",

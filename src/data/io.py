@@ -27,3 +27,10 @@ def load_prediction_dataset(path: str) -> pd.DataFrame:
 
 def load_return_series(path: str, column: str) -> pd.Series:
     return pd.read_csv(path, index_col=0, parse_dates=True)[column]
+
+
+def load_eligibility_mask(prices: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Build the default PIT eligibility mask for research and paper paths."""
+    from src.data.universe import load_default_eligibility_mask
+
+    return load_default_eligibility_mask(prices)

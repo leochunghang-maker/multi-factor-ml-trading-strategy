@@ -36,3 +36,9 @@ def test_config_values_agree_with_platform_config() -> None:
     assert config.RANDOM_SEED == strategy["model_seed"]
     assert config.RANDOM_FOREST_PARAMS["random_state"] == strategy["model_seed"]
     assert config.XGBOOST_PARAMS["random_state"] == strategy["model_seed"]
+
+    research = platform["research"]
+    assert config.RESEARCH_LONG_SHORT_GROSS_EXPOSURE == research["long_short_gross_exposure"]
+    assert config.REQUIRE_INDEX_MEMBERSHIP == research["require_index_membership"]
+    assert config.MIN_UNIVERSE_HISTORY_DAYS == research["min_universe_history_days"]
+    assert config.UNIVERSE_MEMBERSHIP_PATH == research["universe_membership_path"]

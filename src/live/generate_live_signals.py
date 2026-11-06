@@ -19,6 +19,7 @@ from src.config import (
     TICKERS,
 )
 from src.data.io import load_ml_dataset
+from src.data.universe import build_eligibility_mask, eligible_tickers_on_date
 from src.models.ml import train_random_forest
 
 
@@ -151,7 +152,16 @@ def build_live_signals(features: pd.DataFrame, model, model_reason: str) -> pd.D
 
 def generate_live_signals() -> pd.DataFrame:
     prices = download_latest_prices()
+    eligibility = build_eligibility_mask(prices)
+    latest_date = prices.dropna(how="all").index.max()
+    allowed = set(eligible_tickers_on_date(eligibility, latest_date))
     features = calculate_live_features(prices)
+    if allowed:
+        features = features[features["ticker"].isin(allowed)].reset_index(drop=True)
+    if features.empty:
+        raise RuntimeError(
+            "No eligible live tickers after tradability/index-membership filters."
+        )
     model, model_reason = load_or_train_model()
     signals = build_live_signals(features, model, model_reason)
 

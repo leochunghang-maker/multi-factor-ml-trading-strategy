@@ -16,8 +16,8 @@ This report simulates a local paper-trading operating loop. It does not connect 
 ## Latest State
 
 - Latest date: 2026-10-30 00:00:00
-- Portfolio value: 459706.56
-- Cash: 4712.83
+- Portfolio value: 366120.57
+- Cash: 3754.51
 - Drawdown: -18.08%
 - Gross exposure: 98.97%
 - Net exposure: 98.97%
@@ -27,18 +27,18 @@ This report simulates a local paper-trading operating loop. It does not connect 
 ## Stability Metrics
 
 - Total simulated days: 2220
-- Total trades: 1391
-- Warning count: 1841
-- Average daily turnover: 0.0503
+- Total trades: 1405
+- Warning count: 1747
+- Average daily turnover: 0.0504
 - Average gross exposure: 87.86%
-- Return volatility: 21.05%
+- Return volatility: 20.59%
 
 ## Warning Breakdown
 
-- CONCENTRATION: 1178
-- DRAWDOWN_HALT: 10
-- EXCESSIVE_TURNOVER: 69
-- POSITION_COUNT_LIMIT: 80
+- CONCENTRATION: 1082
+- DRAWDOWN_HALT: 9
+- EXCESSIVE_TURNOVER: 71
+- POSITION_COUNT_LIMIT: 81
 - SIGNAL_WARNING: 252
 - STALE_SIGNAL: 252
 

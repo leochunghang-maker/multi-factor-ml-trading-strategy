@@ -1,2 +1,2 @@
-strategy,start,end,n_periods,annual_return,annual_volatility,sharpe_ratio,max_drawdown,cumulative_return
-walk_forward_ml,2022-01-31,2026-09-30,57,0.20241347068803184,0.28734023293013133,0.7044383190753869,-0.2728440848927842,1.1500382215823763
+annual_return,annual_volatility,sharpe_ratio,max_drawdown
+0.18917701789913785,0.27595195327494687,0.6855433188785943,-0.2548353353069056

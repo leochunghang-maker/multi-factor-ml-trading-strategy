@@ -1,6 +1,6 @@
 {
   "strategy": {
-    "universe_name": "S&P 100 style large-cap universe",
+    "universe_name": "S&P 100-style large-cap list with PIT S&P500 membership + tradability filter",
     "live_long_count": 10,
     "features": [
       "momentum_12m",
@@ -11,7 +11,11 @@
   },
   "research": {
     "long_short_gross_exposure": 2.0,
-    "note": "Research-only long/short backtests (multi-factor, walk-forward ML): 100% long + 100% short. Paper trading uses risk_limits.max_gross_exposure (1.0, long-only)."
+    "note": "Research-only long/short backtests (multi-factor, walk-forward ML): 100% long + 100% short. Paper trading uses risk_limits.max_gross_exposure (1.0, long-only).",
+    "require_index_membership": true,
+    "min_universe_history_days": 63,
+    "universe_membership_path": "data/universe_sp500_membership.csv",
+    "universe_note": "Research eligibility = valid price + min history + month-end S&P500 membership (S&P100 subset proxy). Residual survivorship: removed names absent from today's TICKERS are still missing. Paper trading uses the same eligibility when filtering signals."
   },
   "execution": {
     "mode": "local_simulated_paper_only",

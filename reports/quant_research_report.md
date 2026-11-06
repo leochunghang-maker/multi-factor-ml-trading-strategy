@@ -5,16 +5,17 @@
 This project implements a modular quantitative equity research pipeline for a long/short strategy across S&P 100 equities. The research combines traditional cross-sectional factors, machine learning return ranking, walk-forward validation, transaction-cost-aware portfolio construction, and risk reporting.
 
 Headline multi-factor metrics in this checkout are taken from committed
-`results/multi_factor_results.csv` over **2019-01-31 → 2026-09-30**: annual return
-**11.31%**, annual volatility **28.97%**, Sharpe ratio **0.39**, maximum drawdown
-**-39.12%**, beta versus SPY about **0.72**, and cumulative return **70.63%**
-(matching ending wealth **1.7063** in `results/multi_factor_equity_curve.csv`).
-An older narrative snapshot (Sharpe **1.16**, cumulative **196.1%**) and walk-forward
-ML figures (**23.1%** / Sharpe **0.88**) appear in earlier text of this report but are
-**not** reproduced by the committed multi-factor series; corrected walk-forward metrics are in `results/walk_forward_metrics.csv`; the walk-forward chart
-`results/walk_forward_ml_strategy.png` is committed.
+`results/multi_factor_results.csv` over **2019-01-31 → 2026-09-30** with the PIT
+eligibility filter: annual return **8.57%**, annual volatility **28.44%**, Sharpe
+ratio **0.30**, maximum drawdown **-40.69%**, beta versus SPY about **-0.30**, and
+cumulative return **39.97%** (matching ending wealth **1.3997** in
+`results/multi_factor_equity_curve.csv`). Corrected walk-forward metrics are in
+`results/walk_forward_metrics.csv` (annual return **18.92%**, Sharpe **0.69**,
+max drawdown **-25.48%**, cumulative **112.68%** over 57 periods). Older narrative
+snapshots (multi-factor Sharpe **1.16** / **0.39**, walk-forward **0.88** / **0.70**)
+are superseded.
 
-The results are research outputs from a prototype workflow and should be interpreted with realistic caveats: the universe is based on a modern S&P 100-style equity list, prices come from Yahoo Finance, transaction costs are simplified, and execution assumptions are idealized. They are not investment promises or live-trading claims.
+The results are research outputs from a prototype workflow and should be interpreted with realistic caveats: the base ticker list is still a modern S&P 100-style snapshot (residual survivorship), eligibility uses an S&P 500 membership proxy rather than official S&P 100 PIT constituents, prices come from Yahoo Finance, transaction costs are simplified, and execution assumptions are idealized. They are not investment promises or live-trading claims.
 
 ## Research Objective
 
@@ -138,7 +139,20 @@ This is a common risk control pattern, though it remains simplified because it d
 
 ### Survivorship Bias
 
-The equity universe is based on a current or static S&P 100-style list. This can introduce survivorship bias because companies that were removed, acquired, bankrupt, or underperforming during the historical sample may be missing. A production-grade study should use point-in-time index constituents.
+The base equity list is still today's S&P 100-style snapshot, so names that left the index and
+are not in `TICKERS` remain missing. Mitigation now in code (`src/data/universe.py`):
+
+1. Tradability — require a valid price, a minimum history window (63 trading days), and treat
+   trailing all-NaN stretches after the last print as delisted.
+2. Index membership overlay — month-end S&P 500 membership for the same tickers
+   (`data/universe_sp500_membership.csv`, derived from
+   [chinobing/historical_sp500_constituents](https://github.com/chinobing/historical_sp500_constituents)).
+   Because S&P 100 ⊆ S&P 500, non-members are excluded on that date (e.g. PLTR before Sep 2024,
+   UBER before Dec 2023, TSLA before Dec 2020).
+
+This reduces look-ahead membership bias for late joiners but does **not** restore historical
+members that are absent from today's list. A production-grade study still needs official
+point-in-time S&P 100 constituents (and delisted return series).
 
 ### Transaction Cost Simplifications
 
@@ -161,15 +175,15 @@ The machine learning model uses a small feature set and a simple target. Walk-fo
 Source of truth for the multi-factor backtest in this repository checkout:
 `results/multi_factor_results.csv` (`portfolio_return`), sample
 **2019-01-31 → 2026-09-30** (93 month-end rows). Ending wealth in
-`results/multi_factor_equity_curve.csv` is **1.7063**.
+`results/multi_factor_equity_curve.csv` is **1.3997**.
 
 | Metric | Value from committed multi-factor results |
 |---|---:|
-| Annual Return | 11.31% |
-| Annual Volatility | 28.97% |
-| Sharpe Ratio | 0.39 |
-| Max Drawdown | -39.12% |
-| Cumulative Return | 70.63% |
+| Annual Return | 8.57% |
+| Annual Volatility | 28.44% |
+| Sharpe Ratio | 0.30 |
+| Max Drawdown | -40.69% |
+| Cumulative Return | 39.97% |
 | Average One-Way Turnover | 134.73% |
 | Latest Turnover | 140.00% |
 | Beta vs SPY (summary report) | 0.72 |
@@ -186,11 +200,11 @@ Sample: **2022-01-31 → 2026-09-30** (57 month-end periods).
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 20.24% |
-| Annual volatility | 28.73% |
-| Sharpe ratio | 0.70 |
-| Max drawdown | -27.28% |
-| Cumulative return | 115.00% |
+| Annual return | 18.92% |
+| Annual volatility | 27.60% |
+| Sharpe ratio | 0.69 |
+| Max drawdown | -25.48% |
+| Cumulative return | 112.68% |
 
 ### Older narrative snapshot (not current)
 
@@ -239,15 +253,15 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 
 ## Key Findings
 
-- From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **11.31% annual return**, **0.39 Sharpe**, **-39.12% max drawdown**, and **70.63% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
-- Corrected walk-forward ML (month-end, purge/embargo, research L/S gross 2.0) shows **20.24% annual return**, **0.70 Sharpe**, **-27.28% max drawdown**, **115.00% cumulative** over 2022-01-31 → 2026-09-30 (57 periods); older **23.1% / 0.88 Sharpe** figures are superseded.
+- From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **8.57% annual return**, **0.30 Sharpe**, **-40.69% max drawdown**, and **39.97% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
+- Corrected walk-forward ML (month-end, purge/embargo, research L/S gross 2.0) shows **18.92% annual return**, **0.69 Sharpe**, **-25.48% max drawdown**, **112.68% cumulative** over 2022-01-31 → 2026-09-30 (57 periods); older **23.1% / 0.88 Sharpe** figures are superseded.
 - The architecture now separates data, features, models, portfolio construction, backtests, risk, and reporting into reusable modules.
 - Risk analytics add review context by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
-- The research remains a prototype until point-in-time constituents, more realistic trading costs, borrow assumptions, and production-grade data are added.
+- The research remains a prototype until official S&P 100 PIT constituents (not only an S&P 500 proxy), more realistic trading costs, borrow assumptions, and production-grade data are added.
 
 ## Future Improvements
 
-- Replace the static universe with point-in-time historical constituents to reduce survivorship bias.
+- Extend eligibility to official S&P 100 point-in-time constituents and include delisted/removed names in the price panel.
 - Add a realistic transaction cost model based on spreads, ADV, volatility, market impact, and short borrow costs.
 - Add sector, industry, beta, and style-factor exposure reporting.
 - Add position-level and rebalance-level audit trails.

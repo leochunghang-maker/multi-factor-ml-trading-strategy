@@ -14,6 +14,7 @@ from src.config import (
     TRANSACTION_COST,
 )
 from src.data.io import load_factor_frame
+from src.data.universe import load_default_eligibility_mask
 from src.portfolio import (
     build_factor_long_short_returns,
     build_multi_factor_long_short_returns,
@@ -24,6 +25,7 @@ from src.reporting.metrics import calculate_performance_metrics, equity_curve
 def run_momentum_backtest() -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
     momentum = load_factor_frame(MOMENTUM_PATH)
     forward_returns = load_factor_frame(FORWARD_RETURNS_PATH)
+    eligibility = load_default_eligibility_mask()
 
     results = build_factor_long_short_returns(
         momentum,
@@ -32,6 +34,7 @@ def run_momentum_backtest() -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
         short_count=MOMENTUM_SHORT_COUNT,
         min_assets=MOMENTUM_MIN_ASSETS,
         return_column="long_short_return",
+        eligibility=eligibility,
     )
     returns = results["long_short_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)
@@ -44,6 +47,7 @@ def run_multi_factor_backtest(
     momentum = load_factor_frame(MOMENTUM_PATH)
     mean_reversion = load_factor_frame(MEAN_REVERSION_PATH)
     forward_returns = load_factor_frame(FORWARD_RETURNS_PATH)
+    eligibility = load_default_eligibility_mask()
 
     results = build_multi_factor_long_short_returns(
         momentum,
@@ -54,6 +58,7 @@ def run_multi_factor_backtest(
         min_assets=MULTI_FACTOR_MIN_ASSETS,
         transaction_cost=transaction_cost,
         gross_exposure=gross_exposure,
+        eligibility=eligibility,
     )
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)

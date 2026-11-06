@@ -17,6 +17,7 @@ from src.config import (
     WALK_FORWARD_TEST_YEARS,
 )
 from src.data.io import load_prediction_dataset, load_ml_dataset, load_price_data
+from src.data.universe import load_default_eligibility_mask
 from src.models.validation import (
     assert_no_label_overlap,
     decile_spread_analysis,
@@ -36,7 +37,9 @@ def run_prediction_backtest(
     predictions_path: str = ML_PREDICTIONS_PATH,
 ) -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
     predictions = load_prediction_dataset(predictions_path)
-    holding_returns = month_end_holding_period_returns(load_price_data())
+    prices = load_price_data()
+    holding_returns = month_end_holding_period_returns(prices)
+    eligibility = load_default_eligibility_mask(prices)
     results = build_prediction_long_short_returns(
         predictions,
         score_column=PREDICTION_COLUMN,
@@ -46,6 +49,7 @@ def run_prediction_backtest(
         realized_returns=holding_returns,
         rebalance_on_month_ends=True,
         gross_exposure=RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
+        eligibility=eligibility,
     )
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)
@@ -111,7 +115,9 @@ def run_walk_forward_ml_backtest(
     ).to_csv(FEATURE_STABILITY_REPORT_PATH, index=False)
     # Month-end rebalances with month-end→next-month-end holding returns so
     # overlapping daily 21-day labels are not compounded as independent periods.
-    holding_returns = month_end_holding_period_returns(load_price_data())
+    prices = load_price_data()
+    holding_returns = month_end_holding_period_returns(prices)
+    eligibility = load_default_eligibility_mask(prices)
     results = build_prediction_long_short_returns(
         predictions,
         score_column=PREDICTION_COLUMN,
@@ -122,6 +128,7 @@ def run_walk_forward_ml_backtest(
         realized_returns=holding_returns,
         rebalance_on_month_ends=True,
         gross_exposure=RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
+        eligibility=eligibility,
     )
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)

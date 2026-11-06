@@ -25,5 +25,7 @@ reports/*.png
 # Generated model binaries and local datasets
 *.pkl
 data/*.csv
+!data/universe_sp500_membership.csv
+!data/universe_membership_source.json
 
 .venv/
