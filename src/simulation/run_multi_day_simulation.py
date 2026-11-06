@@ -425,6 +425,8 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
                     allocation_buffer=settings.allocation_buffer,
                     max_turnover=settings.max_turnover,
                     past_nav_returns=past_nav_returns,
+                    adv_dollars=broker.adv_dollars or None,
+                    max_adv_participation=broker.max_adv_participation,
                 )
                 if (target_weights > 0).sum() > settings.max_positions:
                     keep = target_weights.nlargest(settings.max_positions).index

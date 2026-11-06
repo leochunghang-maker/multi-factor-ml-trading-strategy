@@ -73,7 +73,9 @@
     "vol_max_scale": 1.0,
     "vol_note": "Paper/sim scales long-only target weights by target_vol/forecast_vol of trailing daily NAV returns. Default estimator=ewma with half-life 21 days; set vol_estimator=realized for trailing sample stdev over vol_lookback_days. Default max_scale=1.0 so the engine never requests leverage.",
     "vol_estimator": "ewma",
-    "vol_ewma_half_life": 21.0
+    "vol_ewma_half_life": 21.0,
+    "max_adv_participation": 0.05,
+    "capacity_note": "Per-name rebalance trade notional is capped at max_adv_participation * 63-day ADV$. Research constraint diagnostics use simulation.starting_capital as the NAV scale; paper/sim uses live portfolio value. Names without ADV are left uncapped by this rule (the separate min ADV$ liquidity filter still applies)."
   },
   "simulation": {
     "rebalance_frequency": "monthly",

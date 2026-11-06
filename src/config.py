@@ -235,7 +235,8 @@ MAX_PAPER_TURNOVER = float(_RISK.get("max_turnover", 1.0))
 MAX_DRAWDOWN_WARNING = float(_RISK.get("max_drawdown_warning", -0.1))
 MIN_AVERAGE_DAILY_DOLLAR_VOLUME = 25_000_000.0
 LIQUIDITY_LOOKBACK_DAYS = 63
-MAX_ADV_PARTICIPATION = 0.05
+# Cap |Δw| * NAV at this fraction of 63-day ADV$ per name (capacity / participation).
+MAX_ADV_PARTICIPATION = float(_RISK.get("max_adv_participation", 0.05))
 PORTFOLIO_TRANSACTION_COST_BPS = 10.0
 PORTFOLIO_SLIPPAGE_BPS = 5.0
 ML_EMBARGO_DAYS = 21

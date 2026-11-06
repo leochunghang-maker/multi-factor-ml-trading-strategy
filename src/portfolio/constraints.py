@@ -16,6 +16,7 @@ from src.config import (
     PORTFOLIO_SLIPPAGE_BPS,
     PORTFOLIO_TRANSACTION_COST_BPS,
     SECTOR_MAP,
+    SIMULATED_INITIAL_CASH,
     TARGET_VOLATILITY,
     VOLATILITY_LOOKBACK,
 )
@@ -54,6 +55,7 @@ class PortfolioConstraints:
     min_average_daily_dollar_volume: float = MIN_AVERAGE_DAILY_DOLLAR_VOLUME
     liquidity_lookback_days: int = LIQUIDITY_LOOKBACK_DAYS
     max_adv_participation: float = MAX_ADV_PARTICIPATION
+    capacity_nav: float = SIMULATED_INITIAL_CASH
     sector_map: dict[str, str] | None = None
     cost_model: TransactionCostModel = TransactionCostModel()
 
@@ -165,6 +167,41 @@ def apply_liquidity_filter(
     return constrained, len(removed), True
 
 
+def apply_adv_participation_cap(
+    target_weights: pd.Series,
+    previous_weights: pd.Series | None,
+    adv: pd.Series,
+    nav: float,
+    max_adv_participation: float,
+) -> tuple[pd.Series, int, bool]:
+    """Clip per-name weight changes so |Δw| * NAV <= max_adv_participation * ADV$.
+
+    Capacity / participation caps stop a research or paper book from assuming it
+    can trade an unrealistic share of a name's average daily dollar volume in a
+    single rebalance. Names without a usable ADV estimate are left unchanged by
+    this rule (the separate min-ADV$ liquidity filter still applies upstream).
+    """
+    if adv.empty or nav <= 0 or max_adv_participation <= 0:
+        return target_weights, 0, False
+
+    previous = _align(previous_weights, target_weights)
+    constrained = target_weights.fillna(0.0).astype(float).copy()
+    adv_aligned = adv.reindex(constrained.index).astype(float)
+    max_delta = (max_adv_participation * adv_aligned) / float(nav)
+    usable = max_delta.replace([np.inf, -np.inf], np.nan).notna() & (max_delta > 0)
+    if not bool(usable.any()):
+        return constrained, 0, False
+
+    delta = constrained - previous
+    clipped_delta = delta.copy()
+    clipped_delta.loc[usable] = delta.loc[usable].clip(
+        lower=-max_delta.loc[usable],
+        upper=max_delta.loc[usable],
+    )
+    n_clipped = int((clipped_delta.sub(delta).abs() > 1e-12).sum())
+    return previous + clipped_delta, n_clipped, True
+
+
 def normalize_to_original_gross(weights: pd.Series, original_gross: float) -> pd.Series:
     gross = weights.abs().sum()
     if gross == 0 or original_gross == 0:
@@ -225,6 +262,20 @@ def constrain_weights(
         constraints.max_turnover,
     )
 
+    # Apply capacity last so later renormalisation / turnover blending cannot
+    # push a name back above max_adv_participation * ADV$ / NAV.
+    capacity_clipped = 0
+    capacity_filter_available = False
+    if not adv.empty:
+        constrained, capacity_clipped, capacity_filter_available = apply_adv_participation_cap(
+            constrained,
+            previous_weights,
+            adv,
+            constraints.capacity_nav,
+            constraints.max_adv_participation,
+        )
+        traded_gross = (constrained - _align(previous_weights, constrained)).abs().sum()
+
     cost = constraints.cost_model.estimate_cost(traded_gross)
     diagnostics = {
         "starting_gross_exposure": starting_gross,
@@ -235,6 +286,10 @@ def constrain_weights(
         "turnover_limited": turnover_limited,
         "liquidity_filter_available": liquidity_filter_available,
         "liquidity_removed_positions": liquidity_removed,
+        "capacity_filter_available": capacity_filter_available,
+        "capacity_clipped_positions": capacity_clipped,
+        "capacity_nav": float(constraints.capacity_nav),
+        "max_adv_participation": float(constraints.max_adv_participation),
         "estimated_transaction_cost": cost,
         "transaction_cost_bps": constraints.cost_model.transaction_cost_bps,
         "slippage_bps": constraints.cost_model.slippage_bps,

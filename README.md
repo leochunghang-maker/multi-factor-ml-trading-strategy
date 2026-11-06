@@ -519,6 +519,12 @@ python src/operations/health.py
   filter (`MIN_AVERAGE_DAILY_DOLLAR_VOLUME = $25M`) is active on all 93 month-end rebalances
   (2019-01-31 → 2026-09-30); names below the threshold were flagged on 62 rebalances (max 3
   names). Constrained gross after renormalisation is unchanged (mean 0.9246).
+- **Capacity / ADV participation**: `risk_limits.max_adv_participation` (default **5%**) caps
+  each name's rebalance trade so `|Δw| * NAV ≤ participation * 63-day ADV$`. Research constraint
+  diagnostics use `simulation.starting_capital` as the NAV scale; paper/sim uses live portfolio
+  value and also clips broker orders before fill. Leftover weight stays in cash (no
+  redistribution onto other names). At the default $100k scale this rarely binds on liquid
+  S&P 100-style names; it is meant for capacity realism and larger notional assumptions.
 - Sector classifications are a **static** map in `data/sector_map.csv` (exported from
   `src/config.py` `SECTOR_MAP`; metadata in `data/sector_map_source.json`). Research L/S demeans
   scores within sector before ranking (`research.sector_neutral`) and caps absolute net sector

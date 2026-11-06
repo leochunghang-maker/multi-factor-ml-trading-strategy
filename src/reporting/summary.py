@@ -246,6 +246,12 @@ def build_summary_metrics(returns: pd.Series) -> dict[str, float]:
         "liquidity_filter_available": float(
             latest_constraint.get("liquidity_filter_available", False)
         ),
+        "capacity_filter_available": float(
+            latest_constraint.get("capacity_filter_available", False)
+        ),
+        "capacity_clipped_positions": float(
+            latest_constraint.get("capacity_clipped_positions", 0)
+        ),
     }
 
 

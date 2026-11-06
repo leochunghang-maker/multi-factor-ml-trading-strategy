@@ -21,6 +21,7 @@ def test_config_values_agree_with_platform_config() -> None:
     assert config.MAX_PAPER_TURNOVER == risk["max_turnover"]
     assert config.SIGNAL_STALENESS_DAYS == risk["max_data_staleness_days"]
     assert config.MAX_DRAWDOWN_WARNING == risk["max_drawdown_warning"]
+    assert config.MAX_ADV_PARTICIPATION == risk["max_adv_participation"]
 
     assert config.TRANSACTION_COST == execution["transaction_cost"]
     assert config.SLIPPAGE_BPS == execution["slippage_bps"]

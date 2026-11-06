@@ -129,6 +129,8 @@ def build_rebalance_orders(
         max_position_weight=MAX_PAPER_ALLOCATION,
         allocation_buffer=PAPER_ALLOCATION_BUFFER,
         max_turnover=MAX_PAPER_TURNOVER,
+        adv_dollars=broker.adv_dollars or None,
+        max_adv_participation=broker.max_adv_participation,
     )
     target_symbols = set(target_weights[target_weights > 0].index)
 

@@ -1,5 +1,7 @@
 import pandas as pd
 
+from src.config import MAX_ADV_PARTICIPATION
+from src.portfolio.constraints import apply_adv_participation_cap
 from src.risk.volatility import paper_volatility_target_scale
 
 
@@ -73,6 +75,8 @@ def build_paper_target_weights(
     allocation_buffer: float,
     max_turnover: float,
     past_nav_returns: pd.Series | list[float] | None = None,
+    adv_dollars: pd.Series | dict[str, float] | None = None,
+    max_adv_participation: float = MAX_ADV_PARTICIPATION,
 ) -> tuple[pd.Series, dict[str, float | bool]]:
     effective_max_weight = max(0.0, max_position_weight - allocation_buffer)
     raw_target = build_target_weight_series(targets)
@@ -85,6 +89,25 @@ def build_paper_target_weights(
     )
     adjusted = adjusted.clip(lower=0.0, upper=effective_max_weight)
     adjusted = normalize_long_only_weights(adjusted[adjusted > 0], effective_max_weight)
+
+    capacity_clipped = 0
+    capacity_filter_available = False
+    if adv_dollars is not None and portfolio_value > 0:
+        adv = (
+            adv_dollars
+            if isinstance(adv_dollars, pd.Series)
+            else pd.Series(adv_dollars, dtype=float)
+        )
+        adjusted, capacity_clipped, capacity_filter_available = apply_adv_participation_cap(
+            adjusted,
+            existing,
+            adv,
+            portfolio_value,
+            max_adv_participation,
+        )
+        # Do not renormalize after a capacity clip: leftover weight stays in cash
+        # so the book does not push other names past their ADV participation.
+        adjusted = adjusted.clip(lower=0.0, upper=effective_max_weight)
 
     # Scale the whole long-only book toward target vol using completed NAV returns only.
     vol_scale = paper_volatility_target_scale(past_nav_returns)
@@ -104,6 +127,9 @@ def build_paper_target_weights(
         "allocation_buffer": allocation_buffer,
         "number_of_target_positions": int((adjusted > 0).sum()),
         "vol_scale": float(vol_scale),
+        "capacity_filter_available": capacity_filter_available,
+        "capacity_clipped_positions": capacity_clipped,
+        "max_adv_participation": float(max_adv_participation),
     }
     return adjusted, diagnostics
 

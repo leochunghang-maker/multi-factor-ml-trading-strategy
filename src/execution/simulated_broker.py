@@ -11,6 +11,7 @@ from src.config import (
     ANNUAL_SHORT_REBATE_BPS,
     HALF_SPREAD_BPS,
     IMPACT_COEFFICIENT_BPS,
+    MAX_ADV_PARTICIPATION,
     MAX_PAPER_ALLOCATION,
     SIMULATED_INITIAL_CASH,
     SLIPPAGE_BPS,
@@ -41,6 +42,42 @@ class SimulatedBroker:
     annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS
     # Average daily dollar volume per symbol; runtime market data, not persisted.
     adv_dollars: dict[str, float] = field(default_factory=dict)
+    max_adv_participation: float = MAX_ADV_PARTICIPATION
+
+    def max_participation_notional(self, symbol: str) -> float | None:
+        # Largest decision-price notional allowed by ADV participation.
+        adv = self.adv_dollars.get(symbol)
+        if (
+            adv is None
+            or not math.isfinite(adv)
+            or adv <= 0
+            or self.max_adv_participation <= 0
+        ):
+            return None
+        return self.max_adv_participation * float(adv)
+
+    def clip_order_to_adv_participation(self, order: SimulatedOrder) -> SimulatedOrder:
+        # Shrink an order so decision notional stays within ADV participation.
+        cap = self.max_participation_notional(order.symbol)
+        if cap is None or order.price <= 0:
+            return order
+        decision_notional = order.quantity * order.price
+        if decision_notional <= cap + 1e-9:
+            return order
+        clipped_qty = cap / order.price
+        if clipped_qty <= 0:
+            return order
+        reason = order.reason or ""
+        suffix = "ADV participation clipped"
+        if suffix not in reason:
+            reason = f"{reason}; {suffix}".strip("; ").strip()
+        return SimulatedOrder(
+            symbol=order.symbol,
+            side=order.side,
+            quantity=clipped_qty,
+            price=order.price,
+            reason=reason,
+        )
 
     def impact_bps(self, symbol: str, notional: float) -> float:
         """Square-root market impact; zero when ADV is unknown."""
@@ -89,6 +126,16 @@ class SimulatedBroker:
             raise ValueError(
                 f"Shorting is not allowed for {order.symbol}: owned {current_qty:.6f}"
             )
+
+        cap = self.max_participation_notional(order.symbol)
+        if cap is not None:
+            decision_notional = order.quantity * order.price
+            if decision_notional > cap * 1.000001:
+                raise ValueError(
+                    f"ADV participation breached for {order.symbol}: "
+                    f"notional {decision_notional:.2f} exceeds "
+                    f"{self.max_adv_participation:.2%} of ADV ({cap:.2f})"
+                )
 
     def validate_position_limits_after_order(
         self,
@@ -168,6 +215,7 @@ class SimulatedBroker:
     ) -> dict:
         # The simulator fills immediately, then applies side-aware slippage to
         # make cash accounting less optimistic than decision-price execution.
+        order = self.clip_order_to_adv_participation(order)
         self.validate_order(order, prices)
         if prices is not None:
             self.validate_position_limits_after_order(

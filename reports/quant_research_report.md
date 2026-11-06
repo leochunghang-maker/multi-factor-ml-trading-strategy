@@ -88,8 +88,9 @@ For the multi-factor strategy:
 Equal weighting makes the portfolio construction transparent and easy to audit. Research
 long/short books now optionally **demean scores by sector** before ranking and **cap absolute
 net sector exposure** (`research.sector_neutral`, `max_sector_net_exposure=0.15`) using the
-static map in `data/sector_map.csv`. Liquidity, capacity, and PIT sector membership are still
-not fully modeled.
+static map in `data/sector_map.csv`. Min-ADV$ liquidity filtering and a 5% ADV participation
+trade cap are wired into constraint diagnostics and paper/sim; multi-day capacity schedules and
+PIT sector membership are still not fully modeled.
 
 ## Machine Learning Framework
 
@@ -215,7 +216,12 @@ Yahoo Finance is convenient for research prototypes, but it is not institutional
 
 ### Execution Assumptions
 
-The backtests assume positions can be entered at the rebalance price with equal weights and no capacity limits. They do not model slippage, borrow availability, borrow fees, financing costs, locate failures, intraday execution, corporate action edge cases, or tax effects.
+Research PnL paths still assume month-end fills at the rebalance price with equal weights.
+Constraint diagnostics and paper/sim now apply a **5% ADV participation** trade cap
+(`risk_limits.max_adv_participation`) on top of the min-ADV$ liquidity filter; leftover weight
+stays in cash. They still do not model multi-day participation schedules, borrow availability /
+locate failures, intraday execution, corporate action edge cases, or tax effects. Research
+borrow/financing and paper/sim slippage + half-spread + sqrt impact remain separate cost layers.
 
 ### Model and Validation Constraints
 
@@ -316,7 +322,8 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 - Replace the static sector map with point-in-time GICS and add beta / style-factor exposure reporting.
 - Add position-level and rebalance-level audit trails.
 - Add benchmark-relative attribution and factor contribution analysis.
-- Add liquidity and capacity constraints.
+- Extend capacity analysis beyond the 5% ADV participation trade cap (e.g. multi-day
+  participation schedules, venue-level liquidity, and AUM stress at institutional size).
 - Add robust experiment tracking for model versions, features, parameters, and validation windows.
 - Widen the nested candidate menu carefully (still with purge/embargo) or add cost-aware inner scoring beyond rank IC.
 - Add production-quality data checks for stale prices, corporate actions, missing data, and symbol changes.
