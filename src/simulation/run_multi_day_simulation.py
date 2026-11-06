@@ -373,6 +373,7 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
     previous_value = settings.starting_capital
     previous_rebalance_date = None
     peak_value = settings.starting_capital
+    past_nav_returns: list[float] = []
 
     for date in prices.index:
         price_row = prices.loc[date].dropna()
@@ -423,6 +424,7 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
                     max_position_weight=settings.max_position_weight,
                     allocation_buffer=settings.allocation_buffer,
                     max_turnover=settings.max_turnover,
+                    past_nav_returns=past_nav_returns,
                 )
                 if (target_weights > 0).sum() > settings.max_positions:
                     keep = target_weights.nlargest(settings.max_positions).index
@@ -480,6 +482,7 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
         financing = broker.accrue_financing(price_dict, timestamp=date.isoformat())
         portfolio_value = broker.portfolio_value(price_dict)
         daily_return = portfolio_value / previous_value - 1 if previous_value > 0 else 0.0
+        past_nav_returns.append(float(daily_return))
         turnover = traded_notional / portfolio_start if portfolio_start > 0 else 0.0
         position_values = broker.position_values(price_dict)
         gross = sum(abs(value) for value in position_values.values()) / portfolio_value if portfolio_value else 0.0

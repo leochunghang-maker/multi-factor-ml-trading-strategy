@@ -24,7 +24,14 @@
     "sector_neutral": true,
     "max_sector_net_exposure": 0.15,
     "sector_map_path": "data/sector_map.csv",
-    "sector_note": "Research L/S demeans scores within sector before ranking and caps |net| sector exposure (default 0.15 of NAV) then restores long/short gross. Sector map is static (data/sector_map.csv) \u2014 not historical PIT GICS."
+    "sector_note": "Research L/S demeans scores within sector before ranking and caps |net| sector exposure (default 0.15 of NAV) then restores long/short gross. Sector map is static (data/sector_map.csv) \u2014 not historical PIT GICS.",
+    "vol_targeting_enabled": true,
+    "target_volatility": 0.15,
+    "vol_lookback_periods": 6,
+    "vol_min_scale": 0.5,
+    "vol_max_scale": 1.5,
+    "vol_periods_per_year": 12,
+    "vol_note": "Research L/S scales base gross by target_vol/realized_vol of trailing portfolio returns (lookback periods, shifted so the rebalance date's own return is excluded). Scale clipped to [vol_min_scale, vol_max_scale]. Base gross remains research.long_short_gross_exposure before scaling."
   },
   "execution": {
     "mode": "local_simulated_paper_only",
@@ -56,7 +63,13 @@
     "max_gross_exposure": 1.0,
     "max_turnover": 1.0,
     "max_drawdown_warning": -0.1,
-    "max_data_staleness_days": 5
+    "max_data_staleness_days": 5,
+    "vol_targeting_enabled": true,
+    "target_volatility": 0.15,
+    "vol_lookback_days": 63,
+    "vol_min_scale": 0.5,
+    "vol_max_scale": 1.0,
+    "vol_note": "Paper/sim scales long-only target weights by target_vol/realized_vol of trailing daily NAV returns (lookback days). Default max_scale=1.0 so the engine never requests leverage; high-vol regimes delever into cash."
   },
   "simulation": {
     "rebalance_frequency": "monthly",

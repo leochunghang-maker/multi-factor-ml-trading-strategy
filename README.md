@@ -329,51 +329,43 @@ complete production risk system.
 
 Headline multi-factor metrics below are recomputed from the committed artifact
 `results/multi_factor_results.csv` (`portfolio_return` column) using the project's
-`calculate_performance_metrics` helper, with the PIT eligibility filter enabled
-(tradability + month-end S&P 500 membership overlay), **name-level HTB borrow tiers**
-(GC default `annual_borrow_bps=100`), and **sector-neutral portfolio construction**
-(`research.sector_neutral` + `max_sector_net_exposure=0.15`). Sample window:
-**2019-01-31 → 2026-09-30** (93 month-end observations). The ending wealth level in
-`results/multi_factor_equity_curve.csv` is **1.2839**, matching the **28.39%** cumulative
-return. Regenerating with `make report` writes the same family of numbers to local
-`results/reports/summary_report.md` / `.csv` (those paths are gitignored generated outputs).
+`calculate_performance_metrics` helper, with the PIT eligibility filter, **HTB borrow tiers**,
+**sector-neutral construction**, and **volatility targeting** (`research.vol_targeting_enabled`,
+target 15% ann. vol, 6-period lookback, scale clipped to [0.5, 1.5]). Sample window:
+**2019-01-31 → 2026-09-30** (93 month-end observations). Ending wealth in
+`results/multi_factor_equity_curve.csv` is **1.3833**, matching **38.33%** cumulative return.
+Regenerating with `make report` writes the same family of numbers to local
+`results/reports/summary_report.md` / `.csv` (gitignored).
 
 | Metric | Value from `results/multi_factor_results.csv` |
 |---|---:|
-| Annual return | 6.60% |
-| Annual volatility | 25.57% |
-| Sharpe ratio | 0.26 |
-| Max drawdown | -43.95% |
-| Cumulative return | 28.39% |
-| Average one-way turnover | 132.75% |
-| Latest turnover | 152.26% |
-| Beta vs SPY (month-end holding returns) | n/a (SPY not in price panel) |
+| Annual return | 6.65% |
+| Annual volatility | 22.05% |
+| Sharpe ratio | 0.30 |
+| Max drawdown | -41.64% |
+| Cumulative return | 38.33% |
+| Average one-way turnover | 124.56% |
+| Mean vol scale | 0.90 |
 
 These are research outputs from the current committed backtest series, not forward-looking
 claims. Interpret them with the limitations below (residual survivorship bias, static sector map,
 simplified transaction costs, idealized execution).
 
-### Walk-forward ML (regenerated 2026-11-06, sector-neutral + cost-aware nested + HTB)
+### Walk-forward ML (regenerated 2026-11-06, vol targeting + sector-neutral + nested + HTB)
 
-From `results/walk_forward_metrics.csv`, regenerated from Yahoo Finance prices (2018-01-02 →
-2026-10-30) with month-end rebalancing, non-overlapping month-end → next-month-end returns,
-purge/embargo of 21-day labels, research long/short gross exposure 2.0 (100% long + 100% short,
-`research.long_short_gross_exposure` in `config/platform_config.json`), the PIT eligibility filter,
-name-level HTB borrow tiers, **sector-neutral score demeaning + sector net-exposure cap (0.15)**,
-and **nested model selection** with inner score `cost_aware_sharpe`. This is distinct from the
-paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`, which these research backtests do not apply.
-Sample: **2022-01-31 → 2026-09-30** (57 month-end periods). Nested choices under
-`cost_aware_sharpe` after sector neutrality: **2022–2023 = `rf_shallow`**, **2024–2026 = `rf_default`**.
-Sector neutrality removed industry concentration that previously inflated walk-forward returns;
-max drawdown improved materially while Sharpe/return fell versus the HTB-only baseline.
+From `results/walk_forward_metrics.csv`, regenerated with month-end rebalancing, purge/embargo,
+research L/S gross 2.0 (base, before vol scale), PIT eligibility, HTB tiers, sector neutrality,
+**vol targeting**, and nested `cost_aware_sharpe`. Nested choices: **2022–2023=`rf_shallow`**,
+**2024–2026=`rf_default`**. Distinct from paper `MAX_GROSS_EXPOSURE=1.0`.
+Sample: **2022-01-31 → 2026-09-30** (57 periods). Mean research vol scale ≈ **1.03**.
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 6.34% |
-| Annual volatility | 17.24% |
-| Sharpe ratio | 0.37 |
-| Max drawdown | -15.82% |
-| Cumulative return | 26.11% |
+| Annual return | 10.02% |
+| Annual volatility | 16.25% |
+| Sharpe ratio | 0.62 |
+| Max drawdown | -14.23% |
+| Cumulative return | 51.19% |
 
 
 ### Older narrative snapshot (not reproduced by current artifacts)
@@ -531,6 +523,13 @@ python src/operations/health.py
   scores within sector before ranking (`research.sector_neutral`) and caps absolute net sector
   exposure (`research.max_sector_net_exposure`, default 0.15), restoring gross only when feasible.
   This is **not** point-in-time historical GICS — sector migrations and reconstitutions are not modeled.
+- **Volatility targeting** scales research L/S weights by `target_vol / realized_vol` of the
+  strategy's own trailing period returns (`research.vol_lookback_periods=6`, target 15%, scale
+  clipped to [`vol_min_scale`, `vol_max_scale`]=[0.5, 1.5]). The rebalance date's own return is
+  excluded (no look-ahead). Paper/sim uses trailing daily NAV returns
+  (`risk_limits.vol_lookback_days=63`) with default `vol_max_scale=1.0` so the engine never
+  requests leverage. Nested inner model selection still scores candidates at base gross without
+  vol scaling. Realized vol is a trailing sample stdev, not a forecast model.
 - Nested walk-forward reduces hyperparameter peeking into each outer test year, but the candidate
   menu is still researcher-chosen and repeated research iteration can still overfit the process.
 - Walk-forward validation is stronger than a static split, but it does not remove all model-selection

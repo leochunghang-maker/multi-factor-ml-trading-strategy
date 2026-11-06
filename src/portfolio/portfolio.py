@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pandas as pd
 
 from src.config import (
@@ -9,8 +11,8 @@ from src.config import (
     SECTOR_MAP_PATH,
     SECTOR_NEUTRAL,
 )
-from pathlib import Path
 from src.execution.financing import financing_cost_from_weights
+from src.risk.volatility import scale_weights, volatility_target_scale
 
 
 def _borrow_bps_on_date(
@@ -273,6 +275,7 @@ def build_factor_long_short_returns(
     portfolio_returns = []
     monthly_dates = month_end_trading_dates(scores)
     previous_weights = None
+    past_portfolio_returns: list[float] = []
 
     for date in monthly_dates:
         score_row = scores.loc[date]
@@ -286,6 +289,8 @@ def build_factor_long_short_returns(
                 long_count,
                 short_count,
             )
+            vol_scale = volatility_target_scale(past_portfolio_returns)
+            weights = scale_weights(weights, vol_scale)
             transaction_cost_amount, traded_gross_exposure = transaction_cost_from_weight_change(
                 weights,
                 previous_weights,
@@ -325,9 +330,11 @@ def build_factor_long_short_returns(
                 "transaction_cost": transaction_cost_amount,
                 "financing_cost": financing_cost,
                 "traded_gross_exposure": traded_gross_exposure,
+                "vol_scale": vol_scale,
                 return_column: portfolio_return,
             })
             previous_weights = weights
+            past_portfolio_returns.append(float(portfolio_return))
 
     results = pd.DataFrame(portfolio_returns)
     results["date"] = pd.to_datetime(results["date"])
@@ -409,6 +416,7 @@ def build_prediction_long_short_returns(
 
     portfolio_returns = []
     previous_weights = None
+    past_portfolio_returns: list[float] = []
 
     for date in rebalance_dates:
         monthly_data = frame[frame["date"] == date]
@@ -451,10 +459,7 @@ def build_prediction_long_short_returns(
         long_stocks = ranked.nlargest(long_count, "_rank_score")
         short_stocks = ranked.nsmallest(short_count, "_rank_score")
 
-        long_return = long_stocks[return_column].mean()
-        short_return = short_stocks[return_column].mean()
         side = gross_exposure / 2
-        gross_return = side * (long_return - short_return)
         weights = pd.Series(0.0, index=monthly_data["ticker"])
         weights.loc[long_stocks["ticker"]] = side / long_count
         weights.loc[short_stocks["ticker"]] = -side / short_count
@@ -464,6 +469,10 @@ def build_prediction_long_short_returns(
                 max_sector_net_exposure=MAX_SECTOR_NET_EXPOSURE,
                 target_gross_exposure=gross_exposure,
             )
+        vol_scale = volatility_target_scale(past_portfolio_returns)
+        weights = scale_weights(weights, vol_scale)
+        aligned = monthly_data.set_index("ticker")[return_column].reindex(weights.index).fillna(0.0)
+        gross_return = float((weights * aligned).sum())
         transaction_cost_amount, traded_gross_exposure = transaction_cost_from_weight_change(
             weights,
             previous_weights,
@@ -486,9 +495,11 @@ def build_prediction_long_short_returns(
             "transaction_cost": transaction_cost_amount,
             "financing_cost": financing_cost,
             "traded_gross_exposure": traded_gross_exposure,
+            "vol_scale": vol_scale,
             "portfolio_return": portfolio_return,
         })
         previous_weights = weights
+        past_portfolio_returns.append(float(portfolio_return))
 
     results = pd.DataFrame(portfolio_returns)
     if results.empty:
@@ -517,6 +528,7 @@ def build_multi_factor_long_short_returns(
     portfolio_returns = []
     monthly_dates = month_end_trading_dates(momentum)
     previous_weights = None
+    past_portfolio_returns: list[float] = []
 
     for date in monthly_dates:
         mom = momentum.loc[date]
@@ -543,6 +555,8 @@ def build_multi_factor_long_short_returns(
                 short_count,
                 gross_exposure=gross_exposure,
             )
+            vol_scale = volatility_target_scale(past_portfolio_returns)
+            weights = scale_weights(weights, vol_scale)
             transaction_cost_amount, traded_gross_exposure = transaction_cost_from_weight_change(
                 weights,
                 previous_weights,
@@ -559,15 +573,18 @@ def build_multi_factor_long_short_returns(
                 periods_per_year=periods_per_year,
                 borrow_bps_by_symbol=name_borrow,
             )
+            portfolio_return = gross_return - transaction_cost_amount - financing_cost
             portfolio_returns.append({
                 "date": date,
                 "gross_return": gross_return,
                 "transaction_cost": transaction_cost_amount,
                 "financing_cost": financing_cost,
                 "traded_gross_exposure": traded_gross_exposure,
-                "portfolio_return": gross_return - transaction_cost_amount - financing_cost,
+                "vol_scale": vol_scale,
+                "portfolio_return": portfolio_return,
             })
             previous_weights = weights
+            past_portfolio_returns.append(float(portfolio_return))
 
     results = pd.DataFrame(portfolio_returns)
     results["date"] = pd.to_datetime(results["date"])

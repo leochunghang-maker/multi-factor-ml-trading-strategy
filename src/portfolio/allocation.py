@@ -1,5 +1,7 @@
 import pandas as pd
 
+from src.risk.volatility import paper_volatility_target_scale
+
 
 def current_weights(
     positions: dict[str, float],
@@ -70,6 +72,7 @@ def build_paper_target_weights(
     max_position_weight: float,
     allocation_buffer: float,
     max_turnover: float,
+    past_nav_returns: pd.Series | list[float] | None = None,
 ) -> tuple[pd.Series, dict[str, float | bool]]:
     effective_max_weight = max(0.0, max_position_weight - allocation_buffer)
     raw_target = build_target_weight_series(targets)
@@ -83,18 +86,24 @@ def build_paper_target_weights(
     adjusted = adjusted.clip(lower=0.0, upper=effective_max_weight)
     adjusted = normalize_long_only_weights(adjusted[adjusted > 0], effective_max_weight)
 
+    # Scale the whole long-only book toward target vol using completed NAV returns only.
+    vol_scale = paper_volatility_target_scale(past_nav_returns)
+    if vol_scale != 1.0 and not adjusted.empty:
+        adjusted = (adjusted * vol_scale).clip(lower=0.0, upper=effective_max_weight)
+
     diagnostics = {
-        "raw_target_weight_sum": raw_target.sum(),
-        "constrained_target_weight_sum": constrained_target.sum(),
-        "final_target_weight_sum": adjusted.sum(),
-        "expected_turnover": expected_turnover,
+        "raw_target_weight_sum": float(raw_target.sum()),
+        "constrained_target_weight_sum": float(constrained_target.sum()),
+        "final_target_weight_sum": float(adjusted.sum()),
+        "expected_turnover": float(expected_turnover),
         "turnover_limited": turnover_limited,
-        "expected_cash_weight": max(0.0, 1.0 - adjusted.sum()),
-        "max_target_weight": adjusted.max() if not adjusted.empty else 0.0,
+        "expected_cash_weight": max(0.0, 1.0 - float(adjusted.sum())),
+        "max_target_weight": float(adjusted.max()) if not adjusted.empty else 0.0,
         "hard_max_position_weight": max_position_weight,
         "effective_max_position_weight": effective_max_weight,
         "allocation_buffer": allocation_buffer,
         "number_of_target_positions": int((adjusted > 0).sum()),
+        "vol_scale": float(vol_scale),
     }
     return adjusted, diagnostics
 

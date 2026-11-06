@@ -5,15 +5,15 @@
 This project implements a modular quantitative equity research pipeline for a long/short strategy across S&P 100 equities. The research combines traditional cross-sectional factors, machine learning return ranking, walk-forward validation, transaction-cost-aware portfolio construction, and risk reporting.
 
 Headline multi-factor metrics in this checkout are taken from committed
-`results/multi_factor_results.csv` over **2019-01-31 → 2026-09-30** with the PIT
-eligibility filter, HTB borrow tiers, and **sector-neutral construction**: annual
-return **6.60%**, annual volatility **25.57%**, Sharpe ratio **0.26**, maximum
-drawdown **-43.95%**, and cumulative return **28.39%** (ending wealth **1.2839** in
-`results/multi_factor_equity_curve.csv`). Walk-forward metrics in
-`results/walk_forward_metrics.csv`: annual return **6.34%**, Sharpe **0.37**,
-max drawdown **-15.82%**, cumulative **26.11%** over 57 periods. Older narrative
-snapshots (multi-factor Sharpe **1.16** / **0.39** / **0.23**, walk-forward **0.88** /
-**0.70** / **0.63**) are superseded.
+`results/multi_factor_results.csv` over **2019-01-31 → 2026-09-30** with PIT
+eligibility, HTB borrow tiers, sector-neutral construction, and **volatility
+targeting**: annual return **6.65%**, annual volatility **22.05%**, Sharpe ratio
+**0.30**, maximum drawdown **-41.64%**, and cumulative return **38.33%** (ending
+wealth **1.3833**). Walk-forward metrics in `results/walk_forward_metrics.csv`:
+annual return **10.02%**, Sharpe **0.62**, max drawdown **-14.23%**, cumulative
+**51.19%** over 57 periods. Older narrative snapshots (multi-factor Sharpe **1.16** /
+**0.39** / **0.23** / **0.26**, walk-forward **0.88** / **0.70** / **0.63** / **0.37**)
+are superseded.
 
 The results are research outputs from a prototype workflow and should be interpreted with realistic caveats: the base ticker list is still a modern S&P 100-style snapshot (residual survivorship), eligibility uses an S&P 500 membership proxy rather than official S&P 100 PIT constituents, prices come from Yahoo Finance, transaction costs are simplified, and execution assumptions are idealized. They are not investment promises or live-trading claims.
 
@@ -192,6 +192,15 @@ HTB=1000, special=3000 bps. Latest classification snapshot:
 prime-broker HTB feed.** Paper/sim remains long-only, so short borrow is usually
 zero there; the broker still supports per-name short accrual if shorts exist.
 
+### Volatility Targeting
+Research long/short books scale base gross exposure by
+`target_volatility / realized_volatility` of trailing portfolio returns
+(`research.vol_targeting_enabled`, default target 15%, lookback 6 month-end periods,
+scale clipped to [0.5, 1.5]). Only returns *before* the rebalance date enter the
+vol estimate. Paper/sim applies the same idea to long-only weights using trailing
+daily NAV returns (`risk_limits.vol_lookback_days=63`) with `vol_max_scale=1.0` so
+no leverage is requested. Nested inner scoring still uses unscaled base gross.
+
 ### Sector Neutrality
 Research L/S construction demeans cross-sectional scores within each sector and then caps
 `|net|` sector exposure (default 0.15 of NAV), restoring overall gross only when the caps
@@ -216,38 +225,35 @@ The machine learning model uses a small feature set and a simple target. Walk-fo
 Source of truth for the multi-factor backtest in this repository checkout:
 `results/multi_factor_results.csv` (`portfolio_return`), sample
 **2019-01-31 → 2026-09-30** (93 month-end rows). Ending wealth in
-`results/multi_factor_equity_curve.csv` is **1.2839**.
+`results/multi_factor_equity_curve.csv` is **1.3833**.
 
 | Metric | Value from committed multi-factor results |
 |---|---:|
-| Annual Return | 6.60% |
-| Annual Volatility | 25.57% |
-| Sharpe Ratio | 0.26 |
-| Max Drawdown | -43.95% |
-| Cumulative Return | 28.39% |
-| Average One-Way Turnover | 132.75% |
-| Latest Turnover | 152.26% |
+| Annual Return | 6.65% |
+| Annual Volatility | 22.05% |
+| Sharpe Ratio | 0.30 |
+| Max Drawdown | -41.64% |
+| Cumulative Return | 38.33% |
+| Average One-Way Turnover | 124.56% |
+| Mean vol scale | 0.90 |
 
 `make report` regenerates the same family of numbers into local
 `results/reports/summary_report.md` / `.csv` (gitignored).
 
-### Walk-forward ML (regenerated 2026-11-06, sector-neutral)
+### Walk-forward ML (regenerated 2026-11-06, vol targeting + sector-neutral)
 
-From `results/walk_forward_metrics.csv`, regenerated from Yahoo Finance prices (2018-01-02 →
-2026-10-30) with month-end rebalancing, non-overlapping month-end → next-month-end returns,
-purge/embargo of 21-day labels, research long/short gross exposure 2.0, PIT eligibility, HTB
-borrow tiers, sector-neutral demeaning + net-exposure cap, and nested `cost_aware_sharpe`
-selection. Nested choices: 2022–2023=`rf_shallow`, 2024–2026=`rf_default`. Distinct from the
-paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`.
-Sample: **2022-01-31 → 2026-09-30** (57 month-end periods).
+From `results/walk_forward_metrics.csv`, with month-end rebalancing, purge/embargo, research
+L/S base gross 2.0, PIT eligibility, HTB tiers, sector neutrality, **vol targeting**, and
+nested `cost_aware_sharpe`. Nested choices: 2022–2023=`rf_shallow`, 2024–2026=`rf_default`.
+Sample: **2022-01-31 → 2026-09-30** (57 periods).
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 6.34% |
-| Annual volatility | 17.24% |
-| Sharpe ratio | 0.37 |
-| Max drawdown | -15.82% |
-| Cumulative return | 26.11% |
+| Annual return | 10.02% |
+| Annual volatility | 16.25% |
+| Sharpe ratio | 0.62 |
+| Max drawdown | -14.23% |
+| Cumulative return | 51.19% |
 
 ### Older narrative snapshot (not current)
 
@@ -296,8 +302,8 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 
 ## Key Findings
 
-- From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **6.60% annual return**, **0.26 Sharpe**, **-43.95% max drawdown**, and **28.39% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
-- Sector-neutral walk-forward ML shows **6.34% annual return**, **0.37 Sharpe**, **-15.82% max drawdown**, **26.11% cumulative** over 2022-01-31 → 2026-09-30 (57 periods); HTB-only walk-forward (**17.42% / 0.63 Sharpe**) and older **23.1% / 0.88 Sharpe** figures are superseded.
+- From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **6.65% annual return**, **0.30 Sharpe**, **-41.64% max drawdown**, and **38.33% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
+- Vol-targeted + sector-neutral walk-forward ML shows **10.02% annual return**, **0.62 Sharpe**, **-14.23% max drawdown**, **51.19% cumulative** over 2022-01-31 → 2026-09-30 (57 periods); prior sector-neutral-only (**6.34% / 0.37**), HTB-only (**17.42% / 0.63**), and older **23.1% / 0.88** figures are superseded.
 - The architecture now separates data, features, models, portfolio construction, backtests, risk, and reporting into reusable modules.
 - Risk analytics add review context by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
 - The research remains a prototype until official S&P 100 PIT constituents (not only an S&P 500 proxy), more realistic trading costs, borrow assumptions, and production-grade data are added.
