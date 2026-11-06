@@ -223,6 +223,7 @@ UNIVERSE_MEMBERSHIP_PATH = str(
 NESTED_WALK_FORWARD = bool(_RESEARCH.get("nested_walk_forward", True))
 NESTED_MIN_TRAIN_YEARS = int(_RESEARCH.get("nested_min_train_years", 2))
 NESTED_USE_MONTH_END_SUBSET = bool(_RESEARCH.get("nested_use_month_end_subset", True))
+NESTED_INNER_SCORE = str(_RESEARCH.get("nested_inner_score", "cost_aware_sharpe"))
 NESTED_SELECTION_REPORT_PATH = "results/reports/nested_model_selection.csv"
 
 SECTOR_MAP = {

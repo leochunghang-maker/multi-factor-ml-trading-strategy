@@ -1,4 +1,21 @@
-"""Nested / anchored walk-forward model selection (no outer-fold peeking)."""
+"""Nested / anchored walk-forward model selection (no outer-fold peeking).
+
+Inner scoring (configurable via ``NESTED_INNER_SCORE`` / ``score_metric``):
+
+- ``rank_ic``: mean cross-sectional Spearman IC across validation dates.
+- ``icir``: mean(IC) / std(IC) across those dates (information coefficient IR).
+- ``cost_aware_sharpe`` (default): annualized Sharpe of equal-weight long/short
+  period returns built from model scores on each validation date, after
+  subtracting (i) turnover × ``transaction_cost`` and (ii) stock-borrow /
+  financing on the signed weight book. Formula per month-end date t:
+
+      gross_t = side * (mean(r_long) - mean(r_short))
+      net_t   = gross_t - |w_t - w_{t-1}|_1 * c - financing(w_t)
+      score   = mean(net) / std(net) * sqrt(periods_per_year)
+
+  with ``side = gross_exposure / 2``. This tracks tradable quality better than
+  raw IC alone while staying fast on the month-end subset.
+"""
 
 from __future__ import annotations
 
@@ -7,27 +24,43 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from scipy.stats import spearmanr
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import Ridge
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from src.config import ML_EMBARGO_DAYS, RANDOM_FOREST_PARAMS, RANDOM_SEED
+from src.config import (
+    ANNUAL_BORROW_BPS,
+    ANNUAL_CASH_FINANCING_BPS,
+    ANNUAL_SHORT_REBATE_BPS,
+    ML_EMBARGO_DAYS,
+    ML_LONG_COUNT,
+    ML_SHORT_COUNT,
+    NESTED_INNER_SCORE,
+    PERIODS_PER_YEAR,
+    RANDOM_FOREST_PARAMS,
+    RANDOM_SEED,
+    RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
+    TRANSACTION_COST,
+)
+from src.execution.financing import financing_cost_from_weights
 from src.models.validation import (
     assert_no_label_overlap,
     inner_anchored_year_splits,
-    mean_rank_ic,
     month_end_subset,
     training_rows_without_label_overlap,
 )
+from src.portfolio.portfolio import (
+    equal_weight_long_short_weights,
+    transaction_cost_from_weight_change,
+)
+
+SUPPORTED_INNER_SCORES = ("rank_ic", "icir", "cost_aware_sharpe")
 
 
 def default_nested_candidates() -> list[dict[str, Any]]:
-    """Small, fast candidate set for nested selection.
-
-    Ridge variants are cheap; one shallow RF and the production RF depth give a
-    minimal nonlinear choice set without a large grid search.
-    """
+    """Small, fast candidate set for nested selection."""
     seed = int(RANDOM_SEED)
     return [
         {"name": "ridge_1", "kind": "ridge", "params": {"alpha": 1.0}},
@@ -67,7 +100,84 @@ def fit_estimator(kind: str, params: dict[str, Any], X: pd.DataFrame, y: pd.Seri
     return model
 
 
-def score_candidate_on_inner_folds(
+def _date_rank_ic(scores: pd.Series, targets: pd.Series) -> float:
+    valid = pd.concat([scores, targets], axis=1).dropna()
+    if len(valid) < 5 or valid.iloc[:, 0].nunique() < 2:
+        return float("nan")
+    corr = spearmanr(valid.iloc[:, 0], valid.iloc[:, 1]).correlation
+    if corr is None or not np.isfinite(corr):
+        return float("nan")
+    return float(corr)
+
+
+def aggregate_icir(ics: list[float]) -> float:
+    """Information-coefficient IR: mean(IC) / std(IC)."""
+    arr = np.asarray([x for x in ics if np.isfinite(x)], dtype=float)
+    if arr.size < 2:
+        return float("nan")
+    denom = float(arr.std(ddof=1))
+    if denom <= 1e-12:
+        return float("nan")
+    return float(arr.mean() / denom)
+
+
+def aggregate_sharpe(returns: list[float], periods_per_year: float = PERIODS_PER_YEAR) -> float:
+    arr = np.asarray([x for x in returns if np.isfinite(x)], dtype=float)
+    if arr.size < 2:
+        return float("nan")
+    denom = float(arr.std(ddof=1))
+    if denom <= 1e-12:
+        return float("nan")
+    return float(arr.mean() / denom * np.sqrt(float(periods_per_year)))
+
+
+def net_long_short_period_return(
+    scores: pd.Series,
+    realized_returns: pd.Series,
+    *,
+    previous_weights: pd.Series | None,
+    long_count: int,
+    short_count: int,
+    gross_exposure: float,
+    transaction_cost: float,
+    annual_borrow_bps: float,
+    annual_short_rebate_bps: float,
+    annual_cash_financing_bps: float,
+    periods_per_year: float,
+) -> tuple[float, pd.Series]:
+    """One rebalance's net L/S return after turnover costs and financing."""
+    aligned = pd.concat(
+        [scores.rename("score"), realized_returns.rename("ret")],
+        axis=1,
+    ).dropna()
+    if len(aligned) < max(long_count + short_count, 4):
+        return float("nan"), previous_weights if previous_weights is not None else pd.Series(dtype=float)
+
+    weights = equal_weight_long_short_weights(
+        aligned["score"],
+        long_count=long_count,
+        short_count=short_count,
+        gross_exposure=gross_exposure,
+    )
+    side = gross_exposure / 2.0
+    long_idx = weights[weights > 0].index
+    short_idx = weights[weights < 0].index
+    if long_idx.empty or short_idx.empty:
+        return float("nan"), weights
+
+    gross = side * (aligned.loc[long_idx, "ret"].mean() - aligned.loc[short_idx, "ret"].mean())
+    trade_cost, _ = transaction_cost_from_weight_change(weights, previous_weights, transaction_cost)
+    financing = financing_cost_from_weights(
+        weights,
+        annual_borrow_bps=annual_borrow_bps,
+        annual_short_rebate_bps=annual_short_rebate_bps,
+        annual_cash_financing_bps=annual_cash_financing_bps,
+        periods_per_year=periods_per_year,
+    )
+    return float(gross - trade_cost - financing), weights
+
+
+def collect_inner_fold_diagnostics(
     train_df: pd.DataFrame,
     *,
     feature_columns: list[str],
@@ -78,8 +188,16 @@ def score_candidate_on_inner_folds(
     embargo_months: int = 1,
     min_train_years: int = 2,
     use_month_end_subset: bool = True,
-) -> float:
-    """Mean inner-fold rank IC for one candidate (NaN if no usable inner fold)."""
+    long_count: int = ML_LONG_COUNT,
+    short_count: int = ML_SHORT_COUNT,
+    gross_exposure: float = RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
+    transaction_cost: float = TRANSACTION_COST,
+    annual_borrow_bps: float = ANNUAL_BORROW_BPS,
+    annual_short_rebate_bps: float = ANNUAL_SHORT_REBATE_BPS,
+    annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS,
+    periods_per_year: float = PERIODS_PER_YEAR,
+) -> dict[str, list[float]]:
+    """Pool per-date ICs and cost-aware net L/S returns across inner folds."""
     frame = month_end_subset(train_df) if use_month_end_subset else train_df
     splits = inner_anchored_year_splits(
         frame["date"],
@@ -87,7 +205,10 @@ def score_candidate_on_inner_folds(
         purge_months=purge_months,
         embargo_months=embargo_months,
     )
-    fold_scores: list[float] = []
+    ics: list[float] = []
+    net_returns: list[float] = []
+    previous_weights: pd.Series | None = None
+
     for split in splits:
         inner_train = training_rows_without_label_overlap(
             frame,
@@ -106,24 +227,97 @@ def score_candidate_on_inner_folds(
             test_start=split["test_start"],
             label_horizon_days=label_horizon_days,
         )
-        # Hard guarantee: nothing from the outer test era can appear here because
-        # ``train_df`` is already purged to the outer fold.
         model = fit_estimator(
-            candidate["kind"], candidate["params"], inner_train[feature_columns], inner_train[target_column]
+            candidate["kind"],
+            candidate["params"],
+            inner_train[feature_columns],
+            inner_train[target_column],
         )
         scored = inner_valid.copy()
         scored["_nested_score"] = model.predict(inner_valid[feature_columns])
-        ic = mean_rank_ic(
-            scored,
-            date_column="date",
-            score_column="_nested_score",
-            target_column=target_column,
+
+        for _date, group in scored.groupby("date"):
+            if "ticker" in group.columns:
+                keyed = group.drop_duplicates("ticker").set_index("ticker")
+            else:
+                keyed = group
+            scores = keyed["_nested_score"]
+            targets = keyed[target_column]
+
+            ic = _date_rank_ic(scores, targets)
+            if np.isfinite(ic):
+                ics.append(ic)
+
+            net, previous_weights = net_long_short_period_return(
+                scores,
+                targets,
+                previous_weights=previous_weights,
+                long_count=long_count,
+                short_count=short_count,
+                gross_exposure=gross_exposure,
+                transaction_cost=transaction_cost,
+                annual_borrow_bps=annual_borrow_bps,
+                annual_short_rebate_bps=annual_short_rebate_bps,
+                annual_cash_financing_bps=annual_cash_financing_bps,
+                periods_per_year=periods_per_year,
+            )
+            if np.isfinite(net):
+                net_returns.append(net)
+
+    return {"ics": ics, "net_returns": net_returns}
+
+
+def summarize_inner_score(
+    diagnostics: dict[str, list[float]],
+    score_metric: str,
+    periods_per_year: float = PERIODS_PER_YEAR,
+) -> float:
+    metric = str(score_metric).strip().lower()
+    if metric not in SUPPORTED_INNER_SCORES:
+        raise ValueError(
+            f"Unsupported nested score_metric={score_metric!r}; "
+            f"expected one of {SUPPORTED_INNER_SCORES}"
         )
-        if np.isfinite(ic):
-            fold_scores.append(ic)
-    if not fold_scores:
-        return float("nan")
-    return float(np.mean(fold_scores))
+    ics = diagnostics.get("ics", [])
+    nets = diagnostics.get("net_returns", [])
+    if metric == "rank_ic":
+        arr = [x for x in ics if np.isfinite(x)]
+        return float(np.mean(arr)) if arr else float("nan")
+    if metric == "icir":
+        return aggregate_icir(ics)
+    return aggregate_sharpe(nets, periods_per_year=periods_per_year)
+
+
+def score_candidate_on_inner_folds(
+    train_df: pd.DataFrame,
+    *,
+    feature_columns: list[str],
+    target_column: str,
+    candidate: dict[str, Any],
+    label_horizon_days: int = ML_EMBARGO_DAYS,
+    purge_months: int = 1,
+    embargo_months: int = 1,
+    min_train_years: int = 2,
+    use_month_end_subset: bool = True,
+    score_metric: str = NESTED_INNER_SCORE,
+    long_count: int = ML_LONG_COUNT,
+    short_count: int = ML_SHORT_COUNT,
+) -> float:
+    """Scalar inner score for one candidate (NaN if no usable diagnostics)."""
+    diagnostics = collect_inner_fold_diagnostics(
+        train_df,
+        feature_columns=feature_columns,
+        target_column=target_column,
+        candidate=candidate,
+        label_horizon_days=label_horizon_days,
+        purge_months=purge_months,
+        embargo_months=embargo_months,
+        min_train_years=min_train_years,
+        use_month_end_subset=use_month_end_subset,
+        long_count=long_count,
+        short_count=short_count,
+    )
+    return summarize_inner_score(diagnostics, score_metric)
 
 
 def select_model_nested(
@@ -138,21 +332,19 @@ def select_model_nested(
     min_train_years: int = 2,
     use_month_end_subset: bool = True,
     outer_test_year: int | None = None,
+    score_metric: str | None = None,
+    long_count: int = ML_LONG_COUNT,
+    short_count: int = ML_SHORT_COUNT,
 ) -> tuple[Any, dict[str, Any]]:
-    """Choose a candidate using only ``train_df``, then refit on all of it.
-
-    If inner folds are unavailable (short history) or every score is NaN, falls
-    back to the first candidate (conventionally the production default when the
-    caller puts ``rf_default`` last — here we fall back to the best finite score
-    or the last RF-like / first entry).
-    """
+    """Choose a candidate using only ``train_df``, then refit on all of it."""
     candidates = deepcopy(candidates or default_nested_candidates())
     if not candidates:
         raise ValueError("candidates must be non-empty")
+    metric = NESTED_INNER_SCORE if score_metric is None else str(score_metric)
 
     score_rows = []
     for candidate in candidates:
-        score = score_candidate_on_inner_folds(
+        diagnostics = collect_inner_fold_diagnostics(
             train_df,
             feature_columns=feature_columns,
             target_column=target_column,
@@ -162,15 +354,25 @@ def select_model_nested(
             embargo_months=embargo_months,
             min_train_years=min_train_years,
             use_month_end_subset=use_month_end_subset,
+            long_count=long_count,
+            short_count=short_count,
         )
-        score_rows.append({"name": candidate["name"], "mean_inner_rank_ic": score})
+        score = summarize_inner_score(diagnostics, metric)
+        score_rows.append({
+            "name": candidate["name"],
+            "inner_score": score,
+            "mean_inner_rank_ic": float(np.mean(diagnostics["ics"])) if diagnostics["ics"] else float("nan"),
+            "inner_icir": aggregate_icir(diagnostics["ics"]),
+            "inner_cost_aware_sharpe": aggregate_sharpe(diagnostics["net_returns"]),
+            "n_inner_ic_dates": len(diagnostics["ics"]),
+            "n_inner_return_dates": len(diagnostics["net_returns"]),
+        })
 
-    finite = [row for row in score_rows if np.isfinite(row["mean_inner_rank_ic"])]
+    finite = [row for row in score_rows if np.isfinite(row["inner_score"])]
     if finite:
-        best_name = max(finite, key=lambda row: row["mean_inner_rank_ic"])["name"]
-        selection_mode = "nested_rank_ic"
+        best_name = max(finite, key=lambda row: row["inner_score"])["name"]
+        selection_mode = f"nested_{metric}"
     else:
-        # Prefer rf_default if present, else last candidate.
         names = [c["name"] for c in candidates]
         best_name = "rf_default" if "rf_default" in names else names[-1]
         selection_mode = "fallback_no_inner_scores"
@@ -183,6 +385,7 @@ def select_model_nested(
         "outer_test_year": outer_test_year,
         "chosen_model": best_name,
         "selection_mode": selection_mode,
+        "score_metric": metric,
         "candidate_scores": score_rows,
         "n_train_rows": int(len(train_df)),
         "train_start": str(pd.to_datetime(train_df["date"]).min().date()) if len(train_df) else None,

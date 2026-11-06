@@ -50,3 +50,4 @@ def test_config_values_agree_with_platform_config() -> None:
     assert config.NESTED_WALK_FORWARD == research["nested_walk_forward"]
     assert config.NESTED_MIN_TRAIN_YEARS == research["nested_min_train_years"]
     assert config.NESTED_USE_MONTH_END_SUBSET == research["nested_use_month_end_subset"]
+    assert config.NESTED_INNER_SCORE == research["nested_inner_score"]

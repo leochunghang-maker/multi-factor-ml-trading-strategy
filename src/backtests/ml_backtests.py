@@ -11,6 +11,7 @@ from src.config import (
     ML_SHORT_COUNT,
     NESTED_MIN_TRAIN_YEARS,
     NESTED_SELECTION_REPORT_PATH,
+    NESTED_INNER_SCORE,
     NESTED_USE_MONTH_END_SUBSET,
     NESTED_WALK_FORWARD,
     PREDICTION_COLUMN,
@@ -114,6 +115,7 @@ def run_walk_forward_ml_backtest(
                 min_train_years=NESTED_MIN_TRAIN_YEARS,
                 use_month_end_subset=NESTED_USE_MONTH_END_SUBSET,
                 outer_test_year=test_year,
+                score_metric=NESTED_INNER_SCORE,
             )
             print(
                 f"  nested choice for {test_year}: {meta['chosen_model']} "
@@ -123,12 +125,17 @@ def run_walk_forward_ml_backtest(
                 "outer_test_year": meta["outer_test_year"],
                 "chosen_model": meta["chosen_model"],
                 "selection_mode": meta["selection_mode"],
+                "score_metric": meta["score_metric"],
                 "n_train_rows": meta["n_train_rows"],
                 "train_start": meta["train_start"],
                 "train_end": meta["train_end"],
             }
             for score_row in meta["candidate_scores"]:
-                flat[f"ic_{score_row['name']}"] = score_row["mean_inner_rank_ic"]
+                name = score_row["name"]
+                flat[f"score_{name}"] = score_row["inner_score"]
+                flat[f"ic_{name}"] = score_row["mean_inner_rank_ic"]
+                flat[f"icir_{name}"] = score_row["inner_icir"]
+                flat[f"cost_sharpe_{name}"] = score_row["inner_cost_aware_sharpe"]
             selection_rows.append(flat)
         else:
             model = train_random_forest(train_df[FEATURES], train_df[TARGET])

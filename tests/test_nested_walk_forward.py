@@ -137,3 +137,110 @@ def test_default_candidates_include_production_rf() -> None:
     names = [c["name"] for c in default_nested_candidates()]
     assert "rf_default" in names
     assert "ridge_1" in names
+
+
+def test_aggregate_icir_and_cost_aware_sharpe_formulas() -> None:
+    from src.models.nested import aggregate_icir, aggregate_sharpe, summarize_inner_score
+
+    assert aggregate_icir([0.1, 0.1, 0.1]) != aggregate_icir([0.1, -0.1, 0.3])
+    assert np.isnan(aggregate_icir([0.2]))
+    sharpe = aggregate_sharpe([0.01, 0.02, 0.015, 0.01], periods_per_year=12)
+    assert sharpe > 0
+    diag = {"ics": [0.05, 0.07, 0.06], "net_returns": [0.01, 0.012, 0.008]}
+    assert summarize_inner_score(diag, "rank_ic") == pytest.approx(np.mean(diag["ics"]))
+    assert summarize_inner_score(diag, "icir") == pytest.approx(aggregate_icir(diag["ics"]))
+    assert summarize_inner_score(diag, "cost_aware_sharpe") == pytest.approx(
+        aggregate_sharpe(diag["net_returns"])
+    )
+
+
+def test_net_long_short_period_return_subtracts_borrow_and_turnover() -> None:
+    from src.models.nested import net_long_short_period_return
+
+    scores = pd.Series({"A": 3.0, "B": 2.0, "C": 1.0, "D": 0.0, "E": -1.0, "F": -2.0})
+    rets = pd.Series({"A": 0.02, "B": 0.01, "C": 0.0, "D": 0.0, "E": -0.01, "F": -0.02})
+    net0, weights = net_long_short_period_return(
+        scores,
+        rets,
+        previous_weights=None,
+        long_count=2,
+        short_count=2,
+        gross_exposure=2.0,
+        transaction_cost=0.0,
+        annual_borrow_bps=0.0,
+        annual_short_rebate_bps=0.0,
+        annual_cash_financing_bps=0.0,
+        periods_per_year=12,
+    )
+    # With borrow 120 bps/year on 100% short ≈ 10 bps/month drag.
+    net_b, _ = net_long_short_period_return(
+        scores,
+        rets,
+        previous_weights=None,
+        long_count=2,
+        short_count=2,
+        gross_exposure=2.0,
+        transaction_cost=0.0,
+        annual_borrow_bps=120.0,
+        annual_short_rebate_bps=0.0,
+        annual_cash_financing_bps=0.0,
+        periods_per_year=12,
+    )
+    assert net0 - net_b == pytest.approx(0.001)
+    # Second rebalance with unchanged weights: turnover cost 0 vs first entry.
+    net_same, _ = net_long_short_period_return(
+        scores,
+        rets,
+        previous_weights=weights,
+        long_count=2,
+        short_count=2,
+        gross_exposure=2.0,
+        transaction_cost=0.01,
+        annual_borrow_bps=0.0,
+        annual_short_rebate_bps=0.0,
+        annual_cash_financing_bps=0.0,
+        periods_per_year=12,
+    )
+    net_fresh, _ = net_long_short_period_return(
+        scores,
+        rets,
+        previous_weights=None,
+        long_count=2,
+        short_count=2,
+        gross_exposure=2.0,
+        transaction_cost=0.01,
+        annual_borrow_bps=0.0,
+        annual_short_rebate_bps=0.0,
+        annual_cash_financing_bps=0.0,
+        periods_per_year=12,
+    )
+    assert net_same > net_fresh
+
+
+def test_score_metric_switch_rank_ic_vs_cost_aware() -> None:
+    frame = _synthetic_panel("2019-01-01", "2023-06-30", n_tickers=8)
+    train = frame[frame["date"] < pd.Timestamp("2023-01-01")]
+    features = ["momentum_12m", "short_term_momentum", "volatility_1m"]
+    candidate = {"name": "ridge_1", "kind": "ridge", "params": {"alpha": 1.0}}
+    ic = score_candidate_on_inner_folds(
+        train,
+        feature_columns=features,
+        target_column="target_return_1m",
+        candidate=candidate,
+        min_train_years=2,
+        score_metric="rank_ic",
+        long_count=2,
+        short_count=2,
+    )
+    sharpe = score_candidate_on_inner_folds(
+        train,
+        feature_columns=features,
+        target_column="target_return_1m",
+        candidate=candidate,
+        min_train_years=2,
+        score_metric="cost_aware_sharpe",
+        long_count=2,
+        short_count=2,
+    )
+    assert np.isfinite(ic)
+    assert np.isfinite(sharpe)

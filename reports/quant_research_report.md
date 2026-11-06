@@ -10,8 +10,8 @@ eligibility filter: annual return **7.57%**, annual volatility **28.44%**, Sharp
 ratio **0.27**, maximum drawdown **-42.14%**, beta versus SPY about **-0.30**, and
 cumulative return **29.53%** (matching ending wealth **1.2953** in
 `results/multi_factor_equity_curve.csv`). Corrected walk-forward metrics are in
-`results/walk_forward_metrics.csv` (annual return **14.46%**, Sharpe **0.42**,
-max drawdown **-26.32%**, cumulative **57.54%** over 57 periods). Older narrative
+`results/walk_forward_metrics.csv` (annual return **17.92%**, Sharpe **0.65**,
+max drawdown **-25.95%**, cumulative **103.08%** over 57 periods). Older narrative
 snapshots (multi-factor Sharpe **1.16** / **0.39**, walk-forward **0.88** / **0.70**)
 are superseded.
 
@@ -139,7 +139,21 @@ This is a common risk control pattern, though it remains simplified because it d
 
 ### Nested Walk-Forward Selection
 
-Outer year folds still use expanding training with purge/embargo. Inside each outer training window, an anchored inner year loop scores a small candidate set (`ridge_1`, `rf_shallow`, `rf_default`) by mean cross-sectional rank IC on a month-end subset, then refits the winner on the full outer train sample before predicting the outer test year. Regenerated 2026-11-06 nested choices: 2022 `rf_default`, 2023–2026 `ridge_1`. This reduces test-year hyperparameter peeking but does not eliminate candidate-menu or research-iteration bias.
+Outer year folds still use expanding training with purge/embargo. Inside each outer training
+window, an anchored inner year loop scores a small candidate set (`ridge_1`, `rf_shallow`,
+`rf_default`) on a month-end subset, then refits the winner on the full outer train sample
+before predicting the outer test year.
+
+Default inner score (`research.nested_inner_score=cost_aware_sharpe`):
+
+`score = mean(net_t) / std(net_t) * sqrt(12)`, where each month-end
+`net_t = side*(mean r_long - mean r_short) - ||Δw||_1 * transaction_cost - financing(w_t)`
+and financing uses the configured stock-borrow / rebate / cash-financing bps. Alternatives:
+`icir = mean(IC)/std(IC)`, `rank_ic = mean(IC)`.
+
+Regenerated 2026-11-06 with `cost_aware_sharpe`: **2022–2026 chose `rf_default`** (under raw
+`rank_ic`, 2023–2026 had preferred `ridge_1`). This reduces test-year hyperparameter peeking
+but does not eliminate candidate-menu or research-iteration bias.
 
 ### Survivorship Bias
 
@@ -208,11 +222,11 @@ Sample: **2022-01-31 → 2026-09-30** (57 month-end periods).
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 14.46% |
-| Annual volatility | 34.52% |
-| Sharpe ratio | 0.42 |
-| Max drawdown | -26.32% |
-| Cumulative return | 57.54% |
+| Annual return | 17.92% |
+| Annual volatility | 27.60% |
+| Sharpe ratio | 0.65 |
+| Max drawdown | -25.95% |
+| Cumulative return | 103.08% |
 
 ### Older narrative snapshot (not current)
 
@@ -262,7 +276,7 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 ## Key Findings
 
 - From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **7.57% annual return**, **0.27 Sharpe**, **-42.14% max drawdown**, and **29.53% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
-- Corrected walk-forward ML (month-end, purge/embargo, research L/S gross 2.0) shows **14.46% annual return**, **0.42 Sharpe**, **-26.32% max drawdown**, **57.54% cumulative** over 2022-01-31 → 2026-09-30 (57 periods); older **23.1% / 0.88 Sharpe** figures are superseded.
+- Corrected walk-forward ML (month-end, purge/embargo, research L/S gross 2.0) shows **17.92% annual return**, **0.65 Sharpe**, **-25.95% max drawdown**, **103.08% cumulative** over 2022-01-31 → 2026-09-30 (57 periods); older **23.1% / 0.88 Sharpe** figures are superseded.
 - The architecture now separates data, features, models, portfolio construction, backtests, risk, and reporting into reusable modules.
 - Risk analytics add review context by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
 - The research remains a prototype until official S&P 100 PIT constituents (not only an S&P 500 proxy), more realistic trading costs, borrow assumptions, and production-grade data are added.

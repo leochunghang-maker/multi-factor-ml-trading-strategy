@@ -277,10 +277,14 @@ The reported outer walk-forward schedule is:
 (`ridge_1`, `rf_shallow`, `rf_default`) is scored on **inner** expanding year folds that use
 only the purged outer training sample (month-end subset for speed). The winner is refit on the
 full outer train set and then applied to the outer test year. Purge/embargo (21-day labels)
-apply to both outer and inner folds. This reduces hyperparameter peeking into the test year; it
-does **not** remove bias from the candidate menu itself or from repeated research iteration.
-Selection log: `results/reports/nested_model_selection.csv`. Disable with
-`research.nested_walk_forward: false`.
+apply to both outer and inner folds.
+
+Default **inner score** is `cost_aware_sharpe` (`research.nested_inner_score`): annualized Sharpe
+of equal-weight long/short month-end returns after `turnover × transaction_cost` and stock-borrow /
+financing on the signed weight book. Alternatives: `icir` = mean(IC)/std(IC), and legacy
+`rank_ic`. This reduces hyperparameter peeking into the test year; it does **not** remove bias
+from the candidate menu itself or from repeated research iteration. Selection log:
+`results/reports/nested_model_selection.csv`. Disable with `research.nested_walk_forward: false`.
 
 Forward returns are used only as labels or realized outcomes. They are not used to form live
 signals.
@@ -348,25 +352,26 @@ These are research outputs from the current committed backtest series, not forwa
 claims. Interpret them with the limitations below (residual survivorship bias, simplified
 transaction costs, idealized execution).
 
-### Walk-forward ML (regenerated 2026-11-06, nested selection + borrow)
+### Walk-forward ML (regenerated 2026-11-06, cost-aware nested score)
 
 From `results/walk_forward_metrics.csv`, regenerated from Yahoo Finance prices (2018-01-02 →
 2026-10-30) with month-end rebalancing, non-overlapping month-end → next-month-end returns,
 purge/embargo of 21-day labels, research long/short gross exposure 2.0 (100% long + 100% short,
-`research.long_short_gross_exposure` in `config/platform_config.json`), the PIT eligibility filter, monthly stock-borrow on short gross
-(`annual_borrow_bps=100`), and **nested model selection** among ridge / shallow RF / default RF.
-This is distinct from the paper-trading cap `MAX_GROSS_EXPOSURE = 1.0`, which these
-research backtests do not apply.
-Sample: **2022-01-31 → 2026-09-30** (57 month-end periods). Nested choices: 2022=`rf_default`,
-2023–2026=`ridge_1`.
+`research.long_short_gross_exposure` in `config/platform_config.json`), the PIT eligibility filter,
+monthly stock-borrow on short gross (`annual_borrow_bps=100`), and **nested model selection**
+with inner score `cost_aware_sharpe`. This is distinct from the paper-trading cap
+`MAX_GROSS_EXPOSURE = 1.0`, which these research backtests do not apply.
+Sample: **2022-01-31 → 2026-09-30** (57 month-end periods). Nested choices under
+`cost_aware_sharpe`: **2022–2026 = `rf_default`** (ridge won under raw `rank_ic` previously).
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 14.46% |
-| Annual volatility | 34.52% |
-| Sharpe ratio | 0.42 |
-| Max drawdown | -26.32% |
-| Cumulative return | 57.54% |
+| Annual return | 17.92% |
+| Annual volatility | 27.60% |
+| Sharpe ratio | 0.65 |
+| Max drawdown | -25.95% |
+| Cumulative return | 103.08% |
+
 
 ### Older narrative snapshot (not reproduced by current artifacts)
 
