@@ -16,8 +16,10 @@ from src.risk.volatility import (
 
 
 def test_scale_is_target_over_realized_and_clipped() -> None:
-    # Constant monthly returns → realized vol ~ 0, scale falls back to 1.0
-    assert volatility_target_scale([0.01] * 10, lookback=6, enabled=True) == 1.0
+    # Constant monthly returns → realized sample stdev ~ 0, scale falls back to 1.0
+    assert volatility_target_scale(
+        [0.01] * 10, lookback=6, enabled=True, estimator="realized"
+    ) == 1.0
 
     rng = np.random.default_rng(0)
     noisy = pd.Series(rng.normal(0.0, 0.05, size=24))
@@ -33,13 +35,19 @@ def test_scale_is_target_over_realized_and_clipped() -> None:
         min_scale=0.5,
         max_scale=1.5,
         enabled=True,
+        estimator="realized",
     )
     raw = 0.10 / annualized_realized_volatility(noisy, 6, 12)
     assert scale == pytest.approx(float(np.clip(raw, 0.5, 1.5)))
 
 
 def test_insufficient_history_returns_unit_scale() -> None:
-    assert volatility_target_scale([0.01, -0.02], lookback=6, enabled=True) == 1.0
+    assert volatility_target_scale(
+        [0.01, -0.02], lookback=6, enabled=True, estimator="realized"
+    ) == 1.0
+    assert volatility_target_scale(
+        [0.01, -0.02], lookback=6, enabled=True, estimator="ewma"
+    ) == 1.0
     assert volatility_target_scale(None, enabled=True) == 1.0
     assert volatility_target_scale([0.01] * 20, enabled=False) == 1.0
 
@@ -120,3 +128,85 @@ def test_paper_scale_defaults_cap_at_one() -> None:
         max_scale=1.0,
     )
     assert scale == pytest.approx(1.0)
+
+
+def test_ewma_lambda_from_half_life() -> None:
+    from src.risk.volatility import ewma_lambda_from_half_life
+
+    assert ewma_lambda_from_half_life(1.0) == pytest.approx(0.5)
+    # Half-life 3 → lambda ≈ 0.7937
+    assert ewma_lambda_from_half_life(3.0) == pytest.approx(0.5 ** (1.0 / 3.0))
+
+
+def test_ewma_volatility_math_and_causality() -> None:
+    from src.risk.volatility import annualized_ewma_volatility, ewma_lambda_from_half_life
+
+    returns = pd.Series([0.02, -0.01, 0.03, -0.02, 0.01, 0.00, 0.04, -0.03])
+    lam = ewma_lambda_from_half_life(3.0)
+    # Manual recurrence
+    var = float(returns.iloc[0] ** 2)
+    for r in returns.iloc[1:]:
+        var = lam * var + (1.0 - lam) * float(r) ** 2
+    expected = float(np.sqrt(var * 12.0))
+    got = annualized_ewma_volatility(returns, lam=lam, periods_per_year=12, min_obs=2)
+    assert got == pytest.approx(expected)
+
+    # Causality: forecast using only the first n points must ignore later returns.
+    early = annualized_ewma_volatility(returns.iloc[:5], half_life=3.0, periods_per_year=12)
+    full = annualized_ewma_volatility(returns, half_life=3.0, periods_per_year=12)
+    assert early != pytest.approx(full)
+    # Recomputing early on a prefix of full series matches early.
+    assert early == pytest.approx(
+        annualized_ewma_volatility(returns.iloc[:5].copy(), half_life=3.0, periods_per_year=12)
+    )
+
+
+def test_ewma_scale_reacts_to_new_shock_without_lookahead() -> None:
+    rng = np.random.default_rng(2)
+    quiet = pd.Series(rng.normal(0.0, 0.01, size=12))
+    shocked = pd.concat([quiet, pd.Series(rng.normal(0.0, 0.10, size=3))], ignore_index=True)
+    before = volatility_target_scale(
+        quiet,
+        target_volatility=0.15,
+        lookback=6,
+        periods_per_year=12,
+        min_scale=0.5,
+        max_scale=1.5,
+        enabled=True,
+        estimator="ewma",
+        ewma_half_life=3.0,
+    )
+    after = volatility_target_scale(
+        shocked,
+        target_volatility=0.15,
+        lookback=6,
+        periods_per_year=12,
+        min_scale=0.5,
+        max_scale=1.5,
+        enabled=True,
+        estimator="ewma",
+        ewma_half_life=3.0,
+    )
+    assert 0.5 <= before <= 1.5
+    assert 0.5 <= after <= 1.5
+    # Adding a high-vol shock (still only past data) raises forecast vol → lower scale.
+    assert after < before
+    # A future return that is NOT passed in must not affect the scale (causality).
+    assert before == volatility_target_scale(
+        quiet,
+        target_volatility=0.15,
+        lookback=6,
+        periods_per_year=12,
+        min_scale=0.5,
+        max_scale=1.5,
+        enabled=True,
+        estimator="ewma",
+        ewma_half_life=3.0,
+    )
+
+
+def test_default_estimator_is_ewma() -> None:
+    from src.config import PAPER_VOL_ESTIMATOR, VOL_ESTIMATOR
+
+    assert VOL_ESTIMATOR == "ewma"
+    assert PAPER_VOL_ESTIMATOR == "ewma"

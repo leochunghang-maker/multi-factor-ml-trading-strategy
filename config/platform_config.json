@@ -31,7 +31,9 @@
     "vol_min_scale": 0.5,
     "vol_max_scale": 1.5,
     "vol_periods_per_year": 12,
-    "vol_note": "Research L/S scales base gross by target_vol/realized_vol of trailing portfolio returns (lookback periods, shifted so the rebalance date's own return is excluded). Scale clipped to [vol_min_scale, vol_max_scale]. Base gross remains research.long_short_gross_exposure before scaling."
+    "vol_note": "Research L/S scales base gross by target_vol / forecast_vol. vol_estimator=ewma (default): EWMA variance with half-life vol_ewma_half_life periods (lambda=0.5^(1/half_life)); vol_estimator=realized: trailing sample stdev over vol_lookback_periods. Only returns before the rebalance enter the estimate (no look-ahead). Scale clipped to [vol_min_scale, vol_max_scale]. Base gross remains research.long_short_gross_exposure before scaling.",
+    "vol_estimator": "ewma",
+    "vol_ewma_half_life": 3.0
   },
   "execution": {
     "mode": "local_simulated_paper_only",
@@ -69,7 +71,9 @@
     "vol_lookback_days": 63,
     "vol_min_scale": 0.5,
     "vol_max_scale": 1.0,
-    "vol_note": "Paper/sim scales long-only target weights by target_vol/realized_vol of trailing daily NAV returns (lookback days). Default max_scale=1.0 so the engine never requests leverage; high-vol regimes delever into cash."
+    "vol_note": "Paper/sim scales long-only target weights by target_vol/forecast_vol of trailing daily NAV returns. Default estimator=ewma with half-life 21 days; set vol_estimator=realized for trailing sample stdev over vol_lookback_days. Default max_scale=1.0 so the engine never requests leverage.",
+    "vol_estimator": "ewma",
+    "vol_ewma_half_life": 21.0
   },
   "simulation": {
     "rebalance_frequency": "monthly",

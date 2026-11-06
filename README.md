@@ -330,42 +330,43 @@ complete production risk system.
 Headline multi-factor metrics below are recomputed from the committed artifact
 `results/multi_factor_results.csv` (`portfolio_return` column) using the project's
 `calculate_performance_metrics` helper, with the PIT eligibility filter, **HTB borrow tiers**,
-**sector-neutral construction**, and **volatility targeting** (`research.vol_targeting_enabled`,
-target 15% ann. vol, 6-period lookback, scale clipped to [0.5, 1.5]). Sample window:
+**sector-neutral construction**, and **EWMA volatility targeting**
+(`research.vol_estimator=ewma`, target 15% ann. vol, half-life 3 periods, scale clipped to
+[0.5, 1.5]; `realized` remains available). Sample window:
 **2019-01-31 → 2026-09-30** (93 month-end observations). Ending wealth in
-`results/multi_factor_equity_curve.csv` is **1.3833**, matching **38.33%** cumulative return.
+`results/multi_factor_equity_curve.csv` is **1.3882**, matching **38.82%** cumulative return.
 Regenerating with `make report` writes the same family of numbers to local
 `results/reports/summary_report.md` / `.csv` (gitignored).
 
 | Metric | Value from `results/multi_factor_results.csv` |
 |---|---:|
-| Annual return | 6.65% |
-| Annual volatility | 22.05% |
-| Sharpe ratio | 0.30 |
-| Max drawdown | -41.64% |
-| Cumulative return | 38.33% |
-| Average one-way turnover | 124.56% |
-| Mean vol scale | 0.90 |
+| Annual return | 6.43% |
+| Annual volatility | 20.88% |
+| Sharpe ratio | 0.31 |
+| Max drawdown | -42.40% |
+| Cumulative return | 38.82% |
+| Average one-way turnover | 119.63% |
+| Mean vol scale | 0.87 |
 
 These are research outputs from the current committed backtest series, not forward-looking
 claims. Interpret them with the limitations below (residual survivorship bias, static sector map,
 simplified transaction costs, idealized execution).
 
-### Walk-forward ML (regenerated 2026-11-06, vol targeting + sector-neutral + nested + HTB)
+### Walk-forward ML (regenerated 2026-11-06, EWMA vol targeting + sector-neutral + nested + HTB)
 
 From `results/walk_forward_metrics.csv`, regenerated with month-end rebalancing, purge/embargo,
 research L/S gross 2.0 (base, before vol scale), PIT eligibility, HTB tiers, sector neutrality,
-**vol targeting**, and nested `cost_aware_sharpe`. Nested choices: **2022–2023=`rf_shallow`**,
+**EWMA vol targeting**, and nested `cost_aware_sharpe`. Nested choices: **2022–2023=`rf_shallow`**,
 **2024–2026=`rf_default`**. Distinct from paper `MAX_GROSS_EXPOSURE=1.0`.
-Sample: **2022-01-31 → 2026-09-30** (57 periods). Mean research vol scale ≈ **1.03**.
+Sample: **2022-01-31 → 2026-09-30** (57 periods). Mean research vol scale ≈ **1.01**.
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 10.02% |
-| Annual volatility | 16.25% |
+| Annual return | 10.17% |
+| Annual volatility | 16.43% |
 | Sharpe ratio | 0.62 |
-| Max drawdown | -14.23% |
-| Cumulative return | 51.19% |
+| Max drawdown | -15.41% |
+| Cumulative return | 52.11% |
 
 
 ### Older narrative snapshot (not reproduced by current artifacts)
@@ -523,13 +524,14 @@ python src/operations/health.py
   scores within sector before ranking (`research.sector_neutral`) and caps absolute net sector
   exposure (`research.max_sector_net_exposure`, default 0.15), restoring gross only when feasible.
   This is **not** point-in-time historical GICS — sector migrations and reconstitutions are not modeled.
-- **Volatility targeting** scales research L/S weights by `target_vol / realized_vol` of the
-  strategy's own trailing period returns (`research.vol_lookback_periods=6`, target 15%, scale
-  clipped to [`vol_min_scale`, `vol_max_scale`]=[0.5, 1.5]). The rebalance date's own return is
-  excluded (no look-ahead). Paper/sim uses trailing daily NAV returns
-  (`risk_limits.vol_lookback_days=63`) with default `vol_max_scale=1.0` so the engine never
-  requests leverage. Nested inner model selection still scores candidates at base gross without
-  vol scaling. Realized vol is a trailing sample stdev, not a forecast model.
+- **Volatility targeting** scales research L/S weights by `target_vol / forecast_vol`.
+  Default `research.vol_estimator=ewma` uses EWMA variance with
+  `vol_ewma_half_life=3` month-end periods (`lambda = 0.5^(1/half_life)`); set
+  `vol_estimator=realized` for trailing sample stdev over `vol_lookback_periods=6`.
+  Target 15%, scale clipped to [0.5, 1.5]. Only returns *before* the rebalance enter the
+  estimate (no look-ahead). Paper/sim defaults to EWMA with half-life 21 daily NAV returns
+  (`risk_limits.vol_ewma_half_life`) and `vol_max_scale=1.0` (no leverage). Nested inner
+  scoring still uses unscaled base gross.
 - Nested walk-forward reduces hyperparameter peeking into each outer test year, but the candidate
   menu is still researcher-chosen and repeated research iteration can still overfit the process.
 - Walk-forward validation is stronger than a static split, but it does not remove all model-selection
