@@ -31,8 +31,34 @@ def load_summary_metrics() -> dict[str, float]:
     return dict(zip(frame["metric"], frame["value"]))
 
 
-def load_strategy_returns() -> pd.DataFrame:
-    return read_csv(RESULTS_DIR / "multi_factor_results.csv", ["date"])
+# The two research books quoted in README "Results Summary" (checked by doc metrics).
+RESEARCH_BOOKS = {
+    "Multi-factor (month-end L/S)": "multi_factor_results.csv",
+    "Walk-forward ML (month-end L/S)": "walk_forward_period_returns.csv",
+}
+
+
+def load_strategy_returns(file_name: str = "multi_factor_results.csv") -> pd.DataFrame:
+    return read_csv(RESULTS_DIR / file_name, ["date"])
+
+
+def book_headline_metrics(frame: pd.DataFrame) -> dict[str, float]:
+    """Headline metrics of a research book, computed exactly as README's doc metrics.
+
+    Monthly net returns annualized with x12 / sqrt(12); turnover is the one-way
+    average of ``traded_gross_exposure / 2`` after the first rebalance.
+    """
+    if frame.empty or "portfolio_return" not in frame.columns:
+        return {}
+    from src.reporting.metrics import calculate_performance_metrics
+
+    returns = frame["portfolio_return"].astype(float).dropna()
+    metrics = {key: float(value) for key, value in calculate_performance_metrics(returns).items()}
+    metrics["cumulative_return"] = float((1.0 + returns).prod() - 1.0)
+    metrics["months"] = float(len(returns))
+    if "traded_gross_exposure" in frame.columns and len(frame) > 1:
+        metrics["average_one_way_turnover"] = float(frame["traded_gross_exposure"].astype(float).iloc[1:].mean() / 2.0)
+    return metrics
 
 
 def load_rolling_risk() -> pd.DataFrame:

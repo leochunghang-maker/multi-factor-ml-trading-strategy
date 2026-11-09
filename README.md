@@ -748,6 +748,8 @@ from the last daily paper run (May 2026) and is older than the research data.
 
 ![Streamlit dashboard overview](docs/assets/dashboard_screenshot.png)
 
+_Screenshot regenerated 2026-11-09 from the committed result files (headline cards match "Results Summary")._
+
 The dashboard can be opened locally with:
 
 ```bash
@@ -794,8 +796,13 @@ The reporting layer produces:
 - Monthly return heatmap.
 - Paper-trading and multi-day simulation status reports.
 
-The dashboard reads from `results/`, `reports/`, execution logs, and live signal outputs. It is a
-local reporting interface and does not place trades.
+The dashboard (`streamlit run dashboard/app.py`) is a read-only local view, with no broker
+connection and no orders. Its headline cards show the multi-factor and walk-forward books from the
+committed result files, computed the same way as "Results Summary" (`tests/test_dashboard.py`
+checks this and renders the app headlessly). The construction-diagnostic charts come from an
+illustrative equal-weight book in `results/reports/` (`make report`). The paper sections read the
+simulated broker (`results/simulation/`) and the simulated paper account (`results/paper/`). See
+[`dashboard/README.md`](dashboard/README.md).
 
 ## Operational Controls
 
