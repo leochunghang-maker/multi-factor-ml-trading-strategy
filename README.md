@@ -141,7 +141,8 @@ package, including transitive ones, with sha256 hashes for Python 3.12+ on Linux
 To change a dependency: edit `requirements.txt`, run `make lock` (= `uv pip compile requirements.txt
 --python-version 3.12 --universal --generate-hashes -o requirements.lock`; `pip install uv` first),
 run the tests, and commit both files. `tests/test_dependency_lock.py` fails if a direct dependency's
-version in the lock differs from `requirements.txt` or a locked package has no hash.
+version in the lock differs from `requirements.txt` or a locked package has no hash, and CI
+regenerates the lock with the pinned `uv==0.13.7` and fails if the file changes.
 
 Run the data pipeline:
 

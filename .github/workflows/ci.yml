@@ -10,10 +10,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -23,6 +23,15 @@ jobs:
       # requirements.txt stays the hand-edited list of direct dependencies.
       - name: Install dependencies (locked)
         run: pip install --require-hashes -r requirements.lock
+
+      # Fails if requirements.lock is stale: regenerate it from requirements.txt
+      # (existing pins are kept as preferences) and require an identical file.
+      # Fix locally with `make lock` and commit both files.
+      - name: Check requirements.lock is up to date
+        run: |
+          pip install uv==0.13.7
+          uv pip compile requirements.txt --python-version 3.12 --universal --generate-hashes -o requirements.lock --quiet
+          git diff --exit-code requirements.lock
 
       - name: Run unit tests
         run: pytest -q

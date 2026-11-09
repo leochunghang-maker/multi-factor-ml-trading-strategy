@@ -6,6 +6,7 @@ install:
 install-loose:
 	pip install -r requirements.txt
 
+# Needs uv; CI pins the same version: pip install uv==0.13.7
 lock:
 	uv pip compile requirements.txt --python-version 3.12 --universal --generate-hashes -o requirements.lock
 
