@@ -9,16 +9,12 @@ from src.config import (
     DAILY_RETURNS_PATH,
     FEATURES,
     FEATURE_STABILITY_REPORT_PATH,
-    FORWARD_RETURNS_PATH,
     MEAN_REVERSION_PATH,
     MAX_SECTOR_GROSS_EXPOSURE,
     MAX_SINGLE_NAME_WEIGHT,
     ML_PREDICTIONS_PATH,
     MOMENTUM_PATH,
-    MULTI_FACTOR_LONG_COUNT,
-    MULTI_FACTOR_MIN_ASSETS,
     MULTI_FACTOR_RESULTS_PATH,
-    MULTI_FACTOR_SHORT_COUNT,
     PORTFOLIO_EXPOSURE_REPORT_PATH,
     PREDICTION_COLUMN,
     PRICE_DATA_PATH,
@@ -48,7 +44,8 @@ from src.models.validation import (
     feature_stability_report,
     prediction_stability_report,
 )
-from src.portfolio import build_multi_factor_long_short_weights, constrain_weight_history
+from src.backtests.factor_backtests import build_reported_multi_factor_book
+from src.portfolio import constrain_weight_history
 from src.portfolio.constraints import load_optional_volume_data
 from src.reporting.analytics import (
     concentration_limit_report,
@@ -77,17 +74,23 @@ def build_multi_factor_turnover() -> pd.Series:
 
 
 def build_multi_factor_weights() -> pd.DataFrame:
-    momentum = load_factor_frame(MOMENTUM_PATH)
-    mean_reversion = load_factor_frame(MEAN_REVERSION_PATH)
-    forward_returns = load_factor_frame(FORWARD_RETURNS_PATH)
-    return build_multi_factor_long_short_weights(
-        momentum,
-        mean_reversion,
-        forward_returns,
-        long_count=MULTI_FACTOR_LONG_COUNT,
-        short_count=MULTI_FACTOR_SHORT_COUNT,
-        min_assets=MULTI_FACTOR_MIN_ASSETS,
-    )
+    """Held weights of the reported multi-factor book (the one in multi_factor_results.csv).
+
+    Rebuilt with the same construction as ``src/multi_factor_backtest.py``
+    (PIT eligibility, beta-neutral legs, vol scaling). Warns if the rebuilt
+    returns differ from the committed result file (stale artifact).
+    """
+    results, weights = build_reported_multi_factor_book()
+    committed_path = Path(MULTI_FACTOR_RESULTS_PATH)
+    if committed_path.exists():
+        committed = load_return_series(MULTI_FACTOR_RESULTS_PATH, "portfolio_return")
+        rebuilt = results["portfolio_return"].reindex(committed.index)
+        if not np.allclose(rebuilt.to_numpy(), committed.to_numpy(), atol=1e-10, equal_nan=False):
+            print(
+                f"WARNING: rebuilt multi-factor book differs from {MULTI_FACTOR_RESULTS_PATH}; "
+                "regenerate it with python src/multi_factor_backtest.py (or make research)."
+            )
+    return weights
 
 
 def save_portfolio_constraint_reports(weights: pd.DataFrame) -> pd.DataFrame:

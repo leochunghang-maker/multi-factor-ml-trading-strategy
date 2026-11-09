@@ -131,12 +131,12 @@ def main() -> None:
             key="rolling_volatility",
         )
 
-    st.header("Construction Diagnostics (illustrative book)")
+    st.header("Multi-Factor Book: Turnover And Exposures")
     st.caption(
-        "Turnover, sector, top-holdings and beta-exposure charts come from results/reports/ "
-        "(python src/generate_report.py), built from an equal-weight composite-score book without the "
-        "point-in-time eligibility filter, beta-neutral legs or volatility targeting. They show how the "
-        "construction behaves; they are not the reported book, so their turnover differs from the headline."
+        "From results/reports/ (make report), built from the held weights of the reported multi-factor book "
+        "(same construction as results/multi_factor_results.csv). \"Proposed\" is that research book; "
+        "\"paper-constrained\" is the same weights after the paper guardrails (max gross, position, sector, "
+        "turnover and liquidity limits), to compare research against paper implementability."
     )
     left, right = st.columns(2)
     with left:

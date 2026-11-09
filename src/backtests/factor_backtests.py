@@ -47,10 +47,12 @@ def run_momentum_backtest() -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
     return results, equity_curve(returns), calculate_performance_metrics(returns)
 
 
-def run_multi_factor_backtest(
-    transaction_cost: float = TRANSACTION_COST,
-    gross_exposure: float = RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
-) -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
+def _multi_factor_book(
+    transaction_cost: float,
+    gross_exposure: float,
+    return_weights: bool,
+    snapshot_tiers: bool,
+):
     momentum = load_factor_frame(MOMENTUM_PATH)
     mean_reversion = load_factor_frame(MEAN_REVERSION_PATH)
     forward_returns = load_factor_frame(FORWARD_RETURNS_PATH)
@@ -58,9 +60,10 @@ def run_multi_factor_backtest(
     prices = load_price_data()
     volumes = load_optional_volume_data(VOLUME_DATA_PATH)
     borrow_panel = research_borrow_bps_panel(prices, volumes)
-    snapshot_borrow_tiers(prices, volumes, path=BORROW_TIER_MAP_PATH)
+    if snapshot_tiers:
+        snapshot_borrow_tiers(prices, volumes, path=BORROW_TIER_MAP_PATH)
 
-    results = build_multi_factor_long_short_returns(
+    return build_multi_factor_long_short_returns(
         momentum,
         mean_reversion,
         forward_returns,
@@ -72,6 +75,26 @@ def run_multi_factor_backtest(
         eligibility=eligibility,
         borrow_bps_panel=borrow_panel,
         beta_panel=research_beta_panel(prices),
+        return_weights=return_weights,
     )
+
+
+def run_multi_factor_backtest(
+    transaction_cost: float = TRANSACTION_COST,
+    gross_exposure: float = RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
+) -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
+    results = _multi_factor_book(transaction_cost, gross_exposure, return_weights=False, snapshot_tiers=True)
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)
+
+
+def build_reported_multi_factor_book(
+    transaction_cost: float = TRANSACTION_COST,
+    gross_exposure: float = RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(results, held weights) of the reported multi-factor book, for reporting only.
+
+    Same construction as ``run_multi_factor_backtest`` (PIT eligibility,
+    beta-neutral legs, vol scaling) but writes nothing (no borrow-tier snapshot).
+    """
+    return _multi_factor_book(transaction_cost, gross_exposure, return_weights=True, snapshot_tiers=False)

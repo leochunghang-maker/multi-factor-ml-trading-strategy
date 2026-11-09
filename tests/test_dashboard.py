@@ -37,6 +37,8 @@ def test_dashboard_text_has_no_hardcoded_numbers_and_is_simulation_only() -> Non
         # Numbers must come from result files, never be typed into labels.
         assert not re.search(r"(?<![.\w])\d+(\.\d+)?\s?%", text), f"hard-coded percentage in {path.name}"
         assert "Institutional" not in text, f"marketing title left in {path.name}"
+        # Diagnostics describe the reported book (tests/test_reported_book.py), not a stand-in.
+        assert "illustrative" not in text.lower(), f"stand-in book wording left in {path.name}"
     app = (ROOT / "dashboard" / "app.py").read_text()
     for phrase in ("no broker connection", "no live-money trading", "simulated paper account"):
         assert phrase in app

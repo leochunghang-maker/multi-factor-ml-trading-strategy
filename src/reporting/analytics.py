@@ -142,7 +142,8 @@ def rolling_risk_report(
 def turnover_series(weights: pd.DataFrame) -> pd.Series:
     # Turnover measures how much the portfolio changes from one rebalance to
     # the next. The one-way convention divides absolute weight changes by two.
-    return weights.diff().abs().sum(axis=1).div(2).dropna()
+    # The first rebalance has no previous book, so it is excluded (not a 0).
+    return weights.diff().iloc[1:].abs().sum(axis=1).div(2)
 
 
 def turnover_statistics(turnover: pd.Series) -> dict[str, float]:

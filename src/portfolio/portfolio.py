@@ -582,8 +582,16 @@ def build_multi_factor_long_short_returns(
     periods_per_year: float = PERIODS_PER_YEAR,
     borrow_bps_panel: pd.DataFrame | None = None,
     beta_panel: pd.DataFrame | None = None,
-) -> pd.DataFrame:
+    return_weights: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
+    """Monthly results of the reported multi-factor book.
+
+    With ``return_weights=True`` also returns the held weights per rebalance
+    (after beta-neutral legs and vol scaling; rows = dates, columns = tickers),
+    the exact book behind ``results`` for exposure/turnover reporting.
+    """
     portfolio_returns = []
+    held_weights: list[pd.Series] = []
     monthly_dates = month_end_trading_dates(momentum)
     previous_weights = None
     past_portfolio_returns: list[float] = []
@@ -647,8 +655,13 @@ def build_multi_factor_long_short_returns(
             })
             previous_weights = weights
             past_portfolio_returns.append(float(portfolio_return))
+            held_weights.append(weights.rename(pd.Timestamp(date)))
 
     results = pd.DataFrame(portfolio_returns)
     results["date"] = pd.to_datetime(results["date"])
     results = results.set_index("date")
+    if return_weights:
+        weights_frame = pd.DataFrame(held_weights).fillna(0.0)
+        weights_frame.index = pd.DatetimeIndex(weights_frame.index, name="date")
+        return results, weights_frame
     return results

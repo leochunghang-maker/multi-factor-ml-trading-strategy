@@ -78,13 +78,13 @@ def turnover_chart(frame: pd.DataFrame) -> go.Figure:
         if column in frame.columns
     ]
     if not columns or _missing(frame, "date"):
-        return empty_chart("Turnover (illustrative book)")
+        return empty_chart("Multi-Factor Book: One-Way Turnover (proposed vs paper-constrained)")
     clean = frame.dropna(subset=["date"])
     return px.line(
         clean,
         x="date",
         y=columns,
-        title="Turnover (illustrative book)",
+        title="Multi-Factor Book: One-Way Turnover (proposed vs paper-constrained)",
         template=TEMPLATE,
         labels={"value": "One-Way Turnover", "date": "Date", "variable": "Series"},
     )
@@ -95,13 +95,13 @@ def sector_exposure_chart(frame: pd.DataFrame) -> go.Figure:
     # one concentrated macro or industry bet.
     sector_columns = [column for column in frame.columns if column != "date"]
     if not sector_columns or _missing(frame, "date"):
-        return empty_chart("Sector Exposure (illustrative book, latest)")
+        return empty_chart("Multi-Factor Book: Sector Net Exposure (paper-constrained)")
     clean = frame.dropna(subset=["date"])
     return px.area(
         clean,
         x="date",
         y=sector_columns,
-        title="Sector Exposure (illustrative book, latest)",
+        title="Multi-Factor Book: Sector Net Exposure (paper-constrained)",
         template=TEMPLATE,
         labels={"value": "Net Weight", "date": "Date", "variable": "Sector"},
     )
@@ -111,10 +111,10 @@ def top_holdings_chart(frame: pd.DataFrame) -> go.Figure:
     # Top holdings make concentration visible. Institutions watch this because
     # single-name shocks can dominate realized PnL.
     if _missing(frame, "date", "constrained_top_holdings"):
-        return empty_chart("Top Holdings (illustrative book, constrained)")
+        return empty_chart("Multi-Factor Book: Top Holdings (paper-constrained, latest)")
     latest = frame.dropna(subset=["date"]).tail(1)
     if latest.empty:
-        return empty_chart("Top Holdings (illustrative book, constrained)")
+        return empty_chart("Multi-Factor Book: Top Holdings (paper-constrained, latest)")
     holdings = []
     for item in str(latest["constrained_top_holdings"].iloc[0]).split("; "):
         if ":" not in item:
@@ -123,12 +123,12 @@ def top_holdings_chart(frame: pd.DataFrame) -> go.Figure:
         holdings.append({"ticker": ticker, "weight": float(value.strip("%")) / 100})
     holdings_frame = pd.DataFrame(holdings)
     if holdings_frame.empty:
-        return empty_chart("Top Holdings (illustrative book, constrained)")
+        return empty_chart("Multi-Factor Book: Top Holdings (paper-constrained, latest)")
     return px.bar(
         holdings_frame,
         x="ticker",
         y="weight",
-        title="Top Holdings (illustrative book, constrained)",
+        title="Multi-Factor Book: Top Holdings (paper-constrained, latest)",
         template=TEMPLATE,
         labels={"ticker": "Ticker", "weight": "Weight"},
     )
@@ -139,13 +139,13 @@ def beta_exposure_chart(frame: pd.DataFrame) -> go.Figure:
     # selection skill from simply being long or short the market.
     column = "constrained_beta_exposure"
     if _missing(frame, "date", column):
-        return empty_chart("Beta Exposure (illustrative book, constrained)")
+        return empty_chart("Multi-Factor Book: 36-Month Beta Exposure (paper-constrained)")
     clean = frame.dropna(subset=["date", column])
     return px.line(
         clean,
         x="date",
         y=column,
-        title="Beta Exposure (illustrative book, constrained)",
+        title="Multi-Factor Book: 36-Month Beta Exposure (paper-constrained)",
         template=TEMPLATE,
         labels={column: "Beta", "date": "Date"},
     )

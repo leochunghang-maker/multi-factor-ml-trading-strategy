@@ -20,10 +20,11 @@ streamlit run dashboard/app.py
 - **Multi-factor performance and risk:** the equity curve and drawdown from the same file.
   Rolling 12-month Sharpe, volatility and beta come from `results/reports/` (local, written by
   `python src/generate_report.py` / `make report`).
-- **Construction diagnostics:** turnover, sector, top-holdings and beta-exposure charts from
-  `results/reports/`. They are built from an illustrative equal-weight composite book, without
-  the point-in-time eligibility filter, beta-neutral legs or vol targeting. They are not the
-  reported book.
+- **Multi-factor book turnover and exposures:** turnover, sector, top-holdings and
+  beta-exposure charts from `results/reports/` (`make report`). They are built from the held
+  weights of the reported multi-factor book (same construction as
+  `results/multi_factor_results.csv`, so its turnover equals the headline). "Proposed" is the
+  research book. "Paper-constrained" is the same weights after the paper guardrails.
 - **Simulated paper account:** model signals from `results/live/latest_signals.csv` ("live" is
   only the file name). Simulated positions, fills and the execution log come from
   `results/simulation/`. The Paper Account tab reads `results/paper/` (`status.json`, journal,

@@ -799,8 +799,8 @@ The reporting layer produces:
 The dashboard (`streamlit run dashboard/app.py`) is a read-only local view, with no broker
 connection and no orders. Its headline cards show the multi-factor and walk-forward books from the
 committed result files, computed the same way as "Results Summary" (`tests/test_dashboard.py`
-checks this and renders the app headlessly). The construction-diagnostic charts come from an
-illustrative equal-weight book in `results/reports/` (`make report`). The paper sections read the
+checks this and renders the app headlessly). The turnover and exposure charts come from the held
+weights of the reported multi-factor book (`results/reports/`, `make report`). The paper sections read the
 simulated broker (`results/simulation/`) and the simulated paper account (`results/paper/`). See
 [`dashboard/README.md`](dashboard/README.md).
 
