@@ -108,6 +108,7 @@ algorithmic-trading-project/
 ├── dashboard/                    # Streamlit reporting dashboard
 ├── docs/                         # Operator checklists and workflow notes
 ├── reports/                      # Lightweight Markdown report snapshots
+├── research/                     # Trial log (DSR N) and one-off diagnostics; see research/README.md
 ├── scripts/                      # Daily paper-trading workflow runner
 ├── src/
 │   ├── backtests/                # Strategy and benchmark backtest engines
@@ -613,7 +614,8 @@ Honest caveats:
 family, description, `trial_increment`, `reported_sharpe`), backfilled from git history and the
 README/report snapshots. **Rule: append the row before running a new variant or test** (use
 `commit=pending` until it is committed), then fill in `reported_sharpe` if one is observed.
-Never delete rows for variants that "didn't work".
+Never delete rows for variants that "didn't work". Full rules (increments, pre-logging steps,
+how N feeds the DSR): [`research/README.md`](research/README.md).
 
 `n_trials = Σ trial_increment + significance.trial_padding` = **<!--m:trials.logged-->43<!--/m--> logged + <!--m:trials.padding-->14<!--/m--> padding = <!--m:trials.n-->57<!--/m-->**.
 The 43 rows: 18 walk-forward ML variants (two whose Sharpe was seen but not recorded), 10
