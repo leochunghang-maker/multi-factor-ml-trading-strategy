@@ -1,4 +1,4 @@
-.PHONY: install test smoke signals paper paper-data paper-data-check dashboard report health significance data-check research doc-metrics
+.PHONY: install test smoke signals paper paper-data paper-data-check paper-status paper-backup dashboard report health significance data-check research doc-metrics
 
 install:
 	pip install -r requirements.txt
@@ -20,6 +20,12 @@ paper-data:
 
 paper-data-check:
 	python src/check_data.py --paper
+
+paper-status:
+	python scripts/paper_status.py
+
+paper-backup:
+	python scripts/paper_backup.py backup
 
 dashboard:
 	streamlit run dashboard/app.py

@@ -39,6 +39,11 @@ The workflow performs:
 8. risk report generation,
 9. dashboard/report update and system health status update (reconciliation mismatches are ERROR).
 
+Alerts (gate blocked, reconciliation mismatch, drawdown halt, out-of-order run) are written to
+`results/paper/alerts.jsonl` and the event log only; `make paper-status` shows them with the latest
+run in `results/paper/status.md`. Back up the account with `make paper-backup` and restore with
+`python scripts/paper_backup.py restore FILE` (refuses to overwrite without `--force`).
+
 Paper-run state under `results/paper/` and paper data under `data/paper/` are local and
 gitignored. The checked-in research snapshot under `data/` is never written by this workflow, so
 no restore step is needed before `make research`. See README, "Paper-run operations".

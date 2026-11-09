@@ -21,13 +21,13 @@ from src.data.paths import DataPaths
 from src.data.universe import drop_empty_price_columns
 
 
-def _download(tickers=TICKERS, start=START_DATE, end=END_DATE) -> pd.DataFrame:
+def _download(tickers=TICKERS, start=START_DATE, end=END_DATE, progress: bool = True) -> pd.DataFrame:
     return yf.download(
         tickers,
         start=start,
         end=end,
         auto_adjust=True,
-        progress=True,
+        progress=progress,
     )
 
 
@@ -67,22 +67,37 @@ def _paths(paths: DataPaths | None) -> DataPaths:
     return paths or DataPaths.research()
 
 
-def download_price_data(include_volume: bool = True, end: str = END_DATE, paths: DataPaths | None = None):
-    """Download prices (and volume) into ``paths`` (default: the research ``data/`` snapshot)."""
+def download_price_data(
+    include_volume: bool = True,
+    end: str = END_DATE,
+    paths: DataPaths | None = None,
+    progress: bool = True,
+    skip_excluded: bool = False,
+):
+    """Download prices (and volume) into ``paths`` (default: the research ``data/`` snapshot).
+
+    ``progress=False`` silences the yfinance progress bar (paper refreshes);
+    ``skip_excluded`` does not request excluded symbols at all (they are blanked
+    either way, so the saved files are the same, without the failed-download noise).
+    """
     paths = _paths(paths)
     Path(paths.price_data).parent.mkdir(parents=True, exist_ok=True)
     from src.data.quality import blank_excluded_symbols
 
     print(f"Downloading price data ({START_DATE} to {end}, end exclusive) into {paths.root}/ ...")
-    data = _download(end=end)
     excluded = _excluded_symbols()
+    tickers = [t for t in TICKERS if t not in excluded] if skip_excluded else TICKERS
+    data = _download(tickers=tickers, end=end, progress=progress)
     # Excluded symbols (recorded decisions, e.g. BK) stay all-NaN so a refresh
     # never changes the universe; other empty columns are dropped as before.
     prices = drop_empty_price_columns(data["Close"].drop(columns=list(excluded), errors="ignore"))
     prices = blank_excluded_symbols(prices, excluded)
     prices.to_csv(paths.price_data)
     print(f"Saved price data to {paths.price_data}")
-    print(prices.tail())
+    if progress:
+        print(prices.tail())
+    else:
+        print(f"  {prices.shape[0]} rows x {prices.shape[1]} symbols, last date {prices.index.max().date()}")
 
     if include_volume:
         save_volume_data(data, path=paths.volume_data, excluded=excluded)
@@ -94,7 +109,7 @@ def download_volume_data(end: str = END_DATE, paths: DataPaths | None = None):
 
 
 def download_benchmark_data(
-    symbol: str = BENCHMARK_SYMBOL, end: str = END_DATE, paths: DataPaths | None = None
+    symbol: str = BENCHMARK_SYMBOL, end: str = END_DATE, paths: DataPaths | None = None, progress: bool = True
 ) -> pd.DataFrame:
     """Download the benchmark's adjusted close into ``<data dir>/benchmark_prices.csv``.
 
@@ -103,7 +118,7 @@ def download_benchmark_data(
     are reproducible offline from checked-in data.
     """
     paths = _paths(paths)
-    data = _download(tickers=[symbol], end=end)
+    data = _download(tickers=[symbol], end=end, progress=progress)
     close = data["Close"]
     if isinstance(close, pd.Series):
         close = close.to_frame(name=symbol)
@@ -150,8 +165,9 @@ def refresh_paper_data(end: str | None = "today", paths: DataPaths | None = None
     """Full aligned refresh (prices, volume, SPY) into the paper dir; never touches data/."""
     paths = paths or DataPaths.paper()
     end = resolve_end_date(end)
-    download_price_data(end=end, paths=paths)
-    download_benchmark_data(end=end, paths=paths)
+    # Quiet: no yfinance progress bar in paper logs, and excluded symbols are not requested.
+    download_price_data(end=end, paths=paths, progress=False, skip_excluded=True)
+    download_benchmark_data(end=end, paths=paths, progress=False)
     write_data_manifest(paths, f"yfinance download, end exclusive {end}")
     return paths
 

@@ -53,7 +53,7 @@ def test_paper_data_dir_is_gitignored() -> None:
     assert out.returncode == 0 and len(out.stdout.split()) == 2
 
 
-def _fake_download(tickers=c.TICKERS, start=None, end=None):
+def _fake_download(tickers=c.TICKERS, start=None, end=None, progress=True):
     dates = pd.bdate_range("2026-09-01", pd.Timestamp(end) - pd.Timedelta(days=1))
     rng = np.random.default_rng(1)
     names = list(tickers)
@@ -101,3 +101,17 @@ def test_gate_blocks_when_paper_data_missing(tmp_path) -> None:
     gate = paper_data_gate(as_of="2026-11-09", data_paths=DataPaths.paper(tmp_path / "empty"))
     assert gate["blocked"]
     assert any("file missing" in e for e in gate["errors"])
+
+
+def test_paper_refresh_is_quiet_and_skips_excluded_symbols(tmp_path, monkeypatch) -> None:
+    calls = []
+
+    def recording_download(tickers=c.TICKERS, start=None, end=None, progress=True):
+        calls.append((list(tickers), progress))
+        return _fake_download(tickers, start, end)
+
+    monkeypatch.setattr(loader, "_download", recording_download)
+    paths = loader.refresh_paper_data(end="2026-11-07", paths=DataPaths.paper(tmp_path / "paper"))
+    assert calls and all(progress is False for _, progress in calls)
+    assert "BK" not in calls[0][0]  # excluded symbol is not requested ...
+    assert pd.read_csv(paths.price_data, index_col=0)["BK"].isna().all()  # ... and still blank in the file
