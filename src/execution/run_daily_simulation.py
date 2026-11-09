@@ -25,6 +25,9 @@ from src.config import (
     SIMULATED_BROKER_STATE_PATH,
     SIMULATED_DAILY_PERFORMANCE_PATH,
     SIMULATED_EXECUTION_LOG_PATH,
+    SIMULATED_LATEST_FILLS_PATH,
+    SIMULATED_LATEST_ORDERS_PATH,
+    SIMULATED_LATEST_REJECTED_PATH,
     SIMULATED_LATEST_SNAPSHOT_PATH,
     SIMULATED_POSITION_SNAPSHOT_PATH,
     SIMULATED_PORTFOLIO_HISTORY_PATH,
@@ -381,7 +384,21 @@ def run_daily_simulation() -> dict:
     rejected_rows = []
     traded_notional = 0.0
 
+    order_rows = [
+        {
+            "timestamp": run_timestamp,
+            "symbol": order.symbol,
+            "side": order.side,
+            "quantity": order.quantity,
+            "decision_price": order.price,
+            "reason": order.reason,
+        }
+        for order in orders
+    ]
+    order_adv_clips = 0
     for order in orders:
+        if broker.clip_order_to_adv_participation(order).quantity < order.quantity - 1e-12:
+            order_adv_clips += 1
         try:
             # Order execution updates cash and positions immediately in the
             # simulated account. Invalid orders are rejected and logged.
@@ -427,6 +444,10 @@ def run_daily_simulation() -> dict:
         "trades_filled": len(trade_rows),
         "orders_rejected": len(rejected_rows),
         "target_weight_sum": allocation_diagnostics.get("final_target_weight_sum", 0.0),
+        "drawdown_halted": bool(drawdown_halted),
+        "vol_scale": allocation_diagnostics.get("vol_scale", 1.0),
+        "capacity_clipped_positions": allocation_diagnostics.get("capacity_clipped_positions", 0),
+        "order_adv_clips": order_adv_clips,
         "expected_cash_weight": allocation_diagnostics.get("expected_cash_weight", 0.0),
     })
     snapshot.update(reconciliation)
@@ -482,6 +503,17 @@ def run_daily_simulation() -> dict:
     append_csv(SIMULATED_DAILY_PERFORMANCE_PATH, [daily_performance])
     append_csv(ALLOCATION_SUMMARY_PATH, [allocation_summary])
     pd.DataFrame([snapshot]).to_csv(SIMULATED_LATEST_SNAPSHOT_PATH, index=False)
+    # Per-run (overwritten) order / fill / rejection files; the daily paper
+    # runner copies them into results/paper/runs/<signal_date>/.
+    order_columns = ["timestamp", "symbol", "side", "quantity", "decision_price", "reason"]
+    pd.DataFrame(order_rows, columns=order_columns).to_csv(SIMULATED_LATEST_ORDERS_PATH, index=False)
+    fill_columns = [
+        "timestamp", "symbol", "side", "quantity", "decision_price", "fill_price", "slippage_bps",
+        "half_spread_bps", "impact_bps", "notional", "transaction_cost", "cash_after", "reason", "status",
+    ]
+    rejected_columns = ["timestamp", "symbol", "side", "quantity", "price", "status", "message"]
+    pd.DataFrame(trade_rows, columns=fill_columns).to_csv(SIMULATED_LATEST_FILLS_PATH, index=False)
+    pd.DataFrame(rejected_rows, columns=rejected_columns).to_csv(SIMULATED_LATEST_REJECTED_PATH, index=False)
     pd.DataFrame(position_rows).to_csv(SIMULATED_POSITION_SNAPSHOT_PATH, index=False)
     realized_vs_target.insert(0, "timestamp", run_timestamp)
     realized_vs_target.to_csv(REALIZED_VS_TARGET_WEIGHTS_PATH, index=False)

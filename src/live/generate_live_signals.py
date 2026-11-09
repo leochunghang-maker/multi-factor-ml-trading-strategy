@@ -150,8 +150,15 @@ def build_live_signals(features: pd.DataFrame, model, model_reason: str) -> pd.D
     ]
 
 
-def generate_live_signals() -> pd.DataFrame:
-    prices = download_latest_prices()
+def generate_live_signals(prices: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Build the paper-trading signal file.
+
+    ``prices`` (e.g. the local ``data/price_data.csv`` that passed the paper data
+    gate) makes the run offline and consistent with the gate; when omitted the
+    standalone script downloads recent prices as before.
+    """
+    if prices is None:
+        prices = download_latest_prices()
     eligibility = build_eligibility_mask(prices)
     latest_date = prices.dropna(how="all").index.max()
     allowed = set(eligible_tickers_on_date(eligibility, latest_date))

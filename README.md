@@ -238,21 +238,56 @@ paper trading, and dashboard review. They do not enable live-money trading.
 
 ## Paper Trading Workflow
 
-The paper-trading workflow is local and simulated by default. It refreshes data, rebuilds features,
-generates signals, applies safety checks, routes orders through the simulated broker, updates risk
-reports, and refreshes dashboard inputs.
+The paper-trading workflow is local and simulated by default. It refreshes data, runs a pre-run
+data gate, rebuilds features, generates signals, applies safety checks, routes orders through the
+simulated broker, snapshots and reconciles the result, appends the journal, updates risk reports,
+and refreshes dashboard inputs. Nothing is sent to any real broker.
 
-Run the daily workflow:
+Run the daily workflow (full refresh of price, volume and SPY through today with
+`src/data_loader.py`, then the paper day):
 
 ```bash
 python scripts/run_daily_paper_trading.py
 ```
 
-Run the same workflow without downloading fresh data:
+Run the same workflow without downloading fresh data (`make paper`):
 
 ```bash
 python scripts/run_daily_paper_trading.py --skip-data-refresh
 ```
+
+### Paper-run operations
+
+| Safeguard | Behaviour |
+|---|---|
+| Pre-run data gate | Runs the data checks with staleness raised to **ERROR** (`data_checks.paper_stale_severity`); any data ERROR blocks the run before features/signals/orders, prints the reasons and exits with code 2. `make data-check`, `make health` and research keep staleness at WARNING. `--as-of YYYY-MM-DD` sets the freshness reference date (default today). |
+| Idempotency | The key is the signal date (latest local price date). A rerun for a completed date logs `already completed …; skipping` and trades nothing. `--force` replaces only the most recent run: its pre-run state is restored first, so the day is re-simulated once, not stacked. Dates older than the latest completed run are refused. Any failure restores `results/simulation/*` and leaves no run folder. |
+| Dated snapshot | `results/paper/runs/<signal date>/`: `run.json` (metadata, NAV, data-gate and reconciliation results), `start_state.json` / `end_state.json` (cash + positions), `positions_start.csv` / `positions_end.csv`, `orders.csv`, `fills.csv`, `rejected.csv`, and `pre_run_state/` (copy of the simulation files used by `--force`). Written to a staging folder and moved into place atomically. |
+| Reconciliation | Before trading: starting cash/positions must equal the previous run's `end_state.json`, and the previous `start_state.json` + `fills.csv` must reproduce that end state (cash ± $0.01, quantity ± 1e-6). A mismatch blocks the run (override: `--allow-reconciliation-mismatch`) and is an **ERROR** in `make health` (`paper_reconciliation`) until a clean run. After trading the same replay checks the new run. |
+| Journal | `results/paper/journal.csv` and `results/paper/journal.md`: one row per signal date with NAV, PnL vs previous run, return, trades, rejected orders, turnover, drawdown, drawdown-halt flag, vol scale, ADV clips (target weights clipped / orders clipped), data-check status and reconciliation status. `results/paper/ledger.csv` is the run ledger. Reruns replace rows instead of duplicating them; duplicate ledger rows are a health ERROR. |
+
+Snapshots, ledger and journal are **not committed**: `results/` is gitignored because this is
+operator-local state that changes every trading day (committing it would churn history and mix
+one machine's paper account into the research repo). Back up `results/paper/` if you want to keep
+the paper account across machines. `reports/paper_trading_journal.md` stays as the place for
+manual review notes.
+
+End-to-end paper day after refreshing data with the loader:
+
+```bash
+python src/data_loader.py --end today --with-benchmark   # prices + volume + SPY through today
+python src/check_data.py                                  # review; manifest WARNINGs are expected
+python scripts/run_daily_paper_trading.py --skip-data-refresh
+cat results/paper/journal.md
+python scripts/run_daily_paper_trading.py --skip-data-refresh   # rerun: "already completed ... skipping"
+python scripts/run_daily_paper_trading.py --skip-data-refresh --force   # replace that day once
+make health
+```
+
+The refresh rewrites the checked-in research snapshot under `data/` (the manifest check will
+flag it and research numbers would change). Do not commit refreshed data with research changes;
+restore the snapshot with `git checkout -- data/` before running `make research`. On the stale
+checked-in snapshot the gate blocks; `--as-of 2026-10-30` runs a demo paper day on it instead.
 
 Run a multi-day operating-loop simulation:
 
@@ -642,7 +677,8 @@ From `reports/paper_trading_status.md` (latest run `2026-05-23T17:29:40+00:00`):
 `reports/system_status.md` is rewritten by every multi-day simulation / `make research` /
 `make health` run. In this checkout it reports overall status **`ERROR`**: the local paper-trading
 artifacts it monitors (`results/live/latest_signals.csv`, `results/simulation/*` snapshots) are
-not committed, and the data checks warn that the price snapshot is stale and `BK` is empty. (An
+not committed, and the data checks warn that the price snapshot is stale (`BK` is reported as
+INFO, by decision; see "Data Checks"). (An
 earlier version of this paragraph described a May 2026 `WARNING` snapshot caused by rejected
 orders; that snapshot had already been overwritten.) The paper-trading status table above is
 from the last daily paper run (May 2026) and is older than the research data.
@@ -745,7 +781,8 @@ smoke-test line (FAIL on any ERROR, WARNING otherwise).
 
 - **Freshness:** last date more than `max_stale_trading_days = 5` weekdays before today (or
   `--as-of`) → `stale_severity` (WARNING by default, because the checked-in data is a research
-  snapshot; set ERROR for a live paper-trading box). Exchange holidays are not excluded, so the
+  snapshot). The daily paper runner uses `paper_stale_severity` (ERROR) instead and blocks on any
+  data ERROR. Exchange holidays are not excluded, so the
   count can overstate staleness by a holiday.
 - **Alignment (ERROR):** volume and benchmark start/end dates and their date sets must match
   `price_data.csv` exactly (`max_end_date_gap_trading_days = 0`, `max_missing_aligned_dates = 0`).
@@ -767,9 +804,14 @@ Nothing in these checks modifies data. Findings on the current snapshot are in
 Findings on the checked-in snapshot (2018-01-02 → 2026-10-30, 2,220 rows): **no errors**;
 price, volume and SPY files are exactly aligned; no calendar gaps, holes inside listed histories,
 flat-price runs, zero volumes or split-like jumps. Warnings: the snapshot is 6 trading days old
-as of 2026-11-09, and **`BK` is an all-NaN column** in both price and volume files (failed
-Yahoo download; the eligibility mask already drops empty columns, so research runs on 100 names,
-but the file was not rewritten). INFO: UBER, PLTR and GEV start late (IPO / spin-off) and 15
+as of 2026-11-09 (staleness is the only warning). **`BK` is an all-NaN column** in both price and
+volume files (failed Yahoo download; the eligibility mask drops empty columns, so research runs on
+100 names). Decision (2026-11-09): **keep BK excluded and do not re-download it**, because adding
+it would change the research universe and results, i.e. count as a new trial. The decision and
+reason are recorded in `config/platform_config.json` → `data_checks.excluded_symbols`, in
+`data/data_manifest.json` and in `reports/data_quality_report.md`; the data check reports the
+empty column as INFO (`excluded_symbols`), and `src/data_loader.py` blanks excluded symbols
+after every download so refreshes keep the same universe. INFO: UBER, PLTR and GEV start late (IPO / spin-off) and 15
 daily moves of 25–38% (none split-like; not verified against news).
 
 ## Known Limitations

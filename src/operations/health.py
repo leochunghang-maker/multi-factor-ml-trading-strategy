@@ -73,6 +73,16 @@ def check_data_inputs(config: dict[str, Any], as_of=None) -> tuple[list[HealthFi
     return findings, summary
 
 
+def check_paper_operations(paths=None) -> list[HealthFinding]:
+    """Paper-run reconciliation (ERROR on mismatch), last data-gate block, ledger duplicates."""
+    from src.operations.paper_ops import paper_health_findings
+
+    try:
+        return [HealthFinding(sev, check, msg) for sev, check, msg in paper_health_findings(paths)]
+    except Exception as exc:  # pragma: no cover - defensive: health must still render
+        return [HealthFinding("ERROR", "paper_operations", f"Paper-run checks failed to run: {exc}")]
+
+
 def check_latest_snapshot(config: dict[str, Any]) -> tuple[list[HealthFinding], dict[str, Any]]:
     findings = []
     snapshot = read_csv(SIMULATED_LATEST_SNAPSHOT_PATH)
@@ -163,6 +173,7 @@ def build_health_status() -> dict[str, Any]:
     findings.extend(check_required_files(config))
     data_findings, data_summary = check_data_inputs(config)
     findings.extend(data_findings)
+    findings.extend(check_paper_operations())
     snapshot_findings, latest_snapshot = check_latest_snapshot(config)
     findings.extend(snapshot_findings)
     concentration_findings, top_positions = check_concentration(config)

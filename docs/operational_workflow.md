@@ -26,14 +26,18 @@ python scripts/run_daily_paper_trading.py
 
 The workflow performs:
 
-1. data refresh,
-2. feature generation,
-3. signal generation,
-4. signal and portfolio safety checks,
-5. simulated broker execution,
-6. risk report generation,
-7. dashboard/report update,
-8. system health status update.
+1. data refresh (`src/data_loader.py` full refresh through today; skip with `--skip-data-refresh`),
+2. pre-run data gate (staleness and any other data ERROR block the run; exit code 2),
+3. idempotency check (a completed signal date is skipped; `--force` replaces the latest run),
+4. feature generation,
+5. signal generation (from the gated local prices),
+6. signal and portfolio safety checks,
+7. simulated broker execution with reconciliation against the previous run, a dated snapshot in
+   `results/paper/runs/<date>/`, and ledger/journal rows in `results/paper/`,
+8. risk report generation,
+9. dashboard/report update and system health status update (reconciliation mismatches are ERROR).
+
+Paper-run state under `results/paper/` is local and gitignored. See README, "Paper-run operations".
 
 ## Simulation Workflow
 

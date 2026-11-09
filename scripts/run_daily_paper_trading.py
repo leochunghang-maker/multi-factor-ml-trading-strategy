@@ -17,18 +17,27 @@ from src.config import (
     ML_DATASET_PATH,
     MOMENTUM_PATH,
     PAPER_TRADING_STATUS_REPORT_PATH,
-    PRICE_DATA_PATH,
+    SIMULATED_LATEST_SNAPSHOT_PATH,
 )
 from src.data.io import load_factor_frame, load_price_data
 from src.execution.run_daily_simulation import (
+    load_latest_prices,
     run_daily_simulation,
     save_paper_trading_status_report,
 )
 from src.features.factors import build_ml_dataset, calculate_factor_frames
-from src.live.generate_live_signals import download_latest_prices, generate_live_signals
+from src.live.generate_live_signals import generate_live_signals
 from src.operations.health import build_health_status, save_system_status_report
 from src.operations.structured_logging import log_event
 from src.operations.metadata import create_run_metadata, set_deterministic_seed
+from src.operations.paper_ops import (
+    PaperOpsPaths,
+    PaperRunBlocked,
+    enforce_data_gate,
+    paper_data_gate,
+    plan_run,
+    run_paper_day,
+)
 from src.reporting.summary import generate_summary_report
 
 
@@ -44,10 +53,24 @@ def print_step(index: int, name: str) -> None:
 
 
 def refresh_price_data() -> pd.DataFrame:
-    prices = download_latest_prices()
-    Path(PRICE_DATA_PATH).parent.mkdir(parents=True, exist_ok=True)
-    prices.to_csv(PRICE_DATA_PATH)
-    return prices
+    """Full-history refresh through today with the research loader (prices, volume, SPY).
+
+    Uses ``src/data_loader.py`` so price/volume/benchmark stay aligned and the
+    excluded-symbol decisions (e.g. BK) are applied. This updates the shared
+    data snapshot; the data manifest will flag the change.
+    """
+    from src.data_loader import (
+        download_benchmark_data,
+        download_price_data,
+        report_changes_vs_manifest,
+        resolve_end_date,
+    )
+
+    end = resolve_end_date("today")
+    download_price_data(end=end)
+    download_benchmark_data(end=end)
+    report_changes_vs_manifest()
+    return load_price_data()
 
 
 def generate_features() -> None:
@@ -136,7 +159,7 @@ def run_step(results: list[StepResult], index: int, name: str, action) -> object
         raise
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run the local daily paper-trading validation workflow."
     )
@@ -145,18 +168,50 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use existing local price data instead of downloading fresh paper-trading prices.",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace the most recent run for the same signal date (restores its pre-run state first).",
+    )
+    parser.add_argument(
+        "--allow-reconciliation-mismatch",
+        action="store_true",
+        help="Run even if starting positions/cash do not match the previous run (still flagged ERROR).",
+    )
+    parser.add_argument(
+        "--as-of",
+        default=None,
+        help="Date used by the data-freshness gate (default: today). Staleness is an ERROR on this path.",
+    )
+    return parser.parse_args(argv)
 
 
-def main() -> None:
-    args = parse_args()
+def blocked(run_id: str, step: str, message: str) -> int:
+    print(f"   BLOCKED: {message}")
+    write_failure_status(f"{step} blocked: {message}")
+    log_event("paper_run_blocked", message, level="ERROR", run_id=run_id, step=step)
+    status = build_health_status()
+    save_system_status_report(status)
+    print()
+    print("Daily paper run blocked; no simulated orders were placed.")
+    return 2
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     results: list[StepResult] = []
     set_deterministic_seed()
     metadata = create_run_metadata(
         "daily_paper_trading",
-        {"skip_data_refresh": args.skip_data_refresh},
+        {
+            "skip_data_refresh": args.skip_data_refresh,
+            "force": args.force,
+            "allow_reconciliation_mismatch": args.allow_reconciliation_mismatch,
+            "as_of": args.as_of,
+        },
     )
     run_id = metadata["run_id"]
+    paths = PaperOpsPaths.default()
     log_event("workflow_started", "Daily paper-trading workflow started.", run_id=run_id)
 
     print("Daily paper-trading validation workflow")
@@ -174,22 +229,78 @@ def main() -> None:
         print(f"   latest price date: {latest_date.date()}")
         log_event("step_completed", "Data refresh completed.", run_id=run_id, latest_price_date=str(latest_date.date()))
 
-    run_step(results, 2, "Feature generation", generate_features)
-    signals = run_step(results, 3, "Signal generation", generate_live_signals)
+    print_step(2, "Pre-run data gate (staleness is an ERROR on the paper path)")
+    gate = paper_data_gate(as_of=args.as_of)
+    try:
+        enforce_data_gate(paths, gate)
+    except PaperRunBlocked as exc:
+        return blocked(run_id, "Pre-run data gate", str(exc))
+    print(f"   ok: data checks {gate['status']} as of {gate['as_of']}")
+    results.append(StepResult("Pre-run data gate", True, gate["status"]))
+
+    local_prices = load_price_data()
+    price_date = local_prices.dropna(how="all").index.max()
+    print_step(3, "Idempotency check")
+    try:
+        action = plan_run(paths, price_date, force=args.force)
+    except PaperRunBlocked as exc:
+        return blocked(run_id, "Idempotency check", str(exc))
+    if action == "skip":
+        message = (
+            f"Paper run for signal date {price_date.date()} already completed "
+            f"({paths.run_dir(price_date)}); skipping. Use --force to replace it."
+        )
+        print(f"   {message}")
+        log_event("paper_run_skipped", message, run_id=run_id, signal_date=str(price_date.date()))
+        return 0
+    print(f"   ok: {action} for signal date {price_date.date()}")
+
+    run_step(results, 4, "Feature generation", generate_features)
+    signals = run_step(results, 5, "Signal generation", lambda: generate_live_signals(prices=local_prices))
     print(f"   generated signals: {len(signals)} rows")
 
-    signal_warnings = run_step(results, 4, "Portfolio constraint and signal safety checks", validate_signal_file)
+    signal_warnings = run_step(results, 6, "Portfolio constraint and signal safety checks", validate_signal_file)
     for warning in signal_warnings:
         print(f"   warning: {warning}")
 
-    snapshot = run_step(results, 5, "Simulated broker execution", run_daily_simulation)
+    signal_date = pd.to_datetime(signals["date"]).max()
+    latest_prices, latest_price_date = load_latest_prices()
+    print_step(7, "Simulated broker execution (idempotent, snapshotted, reconciled)")
+    try:
+        outcome = run_paper_day(
+            signal_date,
+            run_daily_simulation,
+            paths=paths,
+            prices=latest_prices,
+            price_date=latest_price_date,
+            force=args.force,
+            allow_reconciliation_mismatch=args.allow_reconciliation_mismatch,
+            data_gate=gate,
+            run_id=run_id,
+            log=lambda line: print(f"   {line}"),
+        )
+    except PaperRunBlocked as exc:
+        return blocked(run_id, "Simulated broker execution", str(exc))
+    except Exception as exc:
+        results.append(StepResult("Simulated broker execution", False, str(exc)))
+        write_failure_status(f"Simulated broker execution failed: {exc}")
+        log_event("step_failed", f"Simulated broker execution failed: {exc}", level="ERROR", run_id=run_id)
+        print(f"   failed (simulation state restored): {exc}")
+        raise
+    results.append(StepResult("Simulated broker execution", True, outcome["status"].lower()))
+    if outcome["status"] == "SKIPPED":
+        return 0
+    snapshot = pd.read_csv(SIMULATED_LATEST_SNAPSHOT_PATH).iloc[-1].to_dict()
     for warning in validate_turnover(snapshot):
         print(f"   warning: {warning}")
+    log_event("paper_run_completed", f"Paper run {outcome['action']} for {outcome['signal_date']}.",
+              run_id=run_id, signal_date=outcome["signal_date"], run_dir=outcome["run_dir"],
+              reconciliation_status=outcome["reconciliation_status"])
 
-    report = run_step(results, 6, "Risk report generation", generate_summary_report)
+    report = run_step(results, 8, "Risk report generation", generate_summary_report)
     print(f"   report rows: {len(report)}")
 
-    print_step(7, "Dashboard/report update")
+    print_step(9, "Dashboard/report update")
     # The Streamlit dashboard is read-only and automatically reflects the CSVs
     # regenerated above. No browser or broker connection is required here.
     print("   ok: dashboard reads the refreshed results/reports files")
@@ -207,13 +318,16 @@ def main() -> None:
     print()
     print("Daily paper-trading summary")
     for result in results:
-        status = "OK" if result.ok else "FAILED"
-        print(f"- {status}: {result.name} ({result.detail})")
+        state = "OK" if result.ok else "FAILED"
+        print(f"- {state}: {result.name} ({result.detail})")
     print()
+    print(f"Run folder: {outcome['run_dir']}")
+    print(f"Journal: {paths.journal_md}")
     print(f"Paper trading status report: {PAPER_TRADING_STATUS_REPORT_PATH}")
     print(f"Run metadata: {metadata['metadata_path']}")
     log_event("workflow_completed", "Daily paper-trading workflow completed.", run_id=run_id)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
