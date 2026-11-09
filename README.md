@@ -232,6 +232,8 @@ paper trading, and dashboard review. They do not enable live-money trading.
 | `make paper-data` | Refresh the paper data dir `data/paper/` (prices, volume, SPY through today); never touches `data/`. |
 | `make paper-data-check` | Data checks on `data/paper/` against its own manifest. |
 | `make paper-status` | Print and write the paper account summary `results/paper/status.md` (active and recent alerts, last gate, latest run, journal tail). |
+| `make paper-daily` | Scheduled paper day: lock → refresh → data gate → paper day → status → weekly review → rotating backup (keeps the newest `paper_trading.backup_keep` = 10). Exit 0 ok/skipped, 1 failed, 2 blocked, 3 locked. |
+| `make paper-review` | Write this week's review to `results/paper/reviews/weekly-<YYYY>-W<ww>.md/.json` (`--week-of DATE` for another week). |
 | `make paper-backup` | Write a verified backup of the paper account to `backups/paper/` (restore: `python scripts/paper_backup.py restore FILE`). |
 | `make dashboard` | Start the Streamlit dashboard. |
 | `make report` | Regenerate research and risk summary reports. |
@@ -284,6 +286,8 @@ python scripts/run_daily_paper_trading.py --skip-data-refresh
 | Reconciliation | Before trading: starting cash/positions must equal the previous run's `end_state.json`, and the previous `start_state.json` + `fills.csv` must reproduce that end state (cash ± $0.01, quantity ± 1e-6). A mismatch blocks the run (override: `--allow-reconciliation-mismatch`) and is an **ERROR** in `make health` (`paper_reconciliation`) until a clean run. After trading the same replay checks the new run. |
 | Alerts | Local only: appended to `results/paper/alerts.jsonl`, mirrored to `results/operations/platform_events.jsonl` (`paper_alert`) and printed as `ALERT [...]` lines; nothing is emailed or messaged. Kinds: `data_gate_blocked` (ERROR), `reconciliation_mismatch` (ERROR, pre- or post-run), `drawdown_halt` (WARNING, rebalance skipped), `run_blocked` (WARNING, e.g. out-of-order date). |
 | Status summary | `results/paper/status.md` / `status.json`, rewritten after every gate decision, run and alert, and by `make paper-status` (`python scripts/paper_status.py --strict` exits 1 on an active ERROR). Active alerts reflect the current state (last gate, last reconciliation, latest run's halt flag) and clear after a clean run; the alert history stays in `alerts.jsonl`. |
+| Lock | Every paper run (`scripts/run_daily_paper_trading.py`, `make paper`, `make paper-daily`) takes `results/operations/paper_daily.lock` (atomic create; pid, host, start time). A second run exits with code 3, a `run_blocked` alert and no trading. A stale lock (pid gone on this host, older than `paper_trading.lock_stale_hours` = 6, or unreadable for > 30 s) is removed with a log line. |
+| Weekly review | `results/paper/reviews/weekly-<ISO week>.md/.json` from `journal.csv`, `alerts.jsonl` and `gate_history.csv` (one row per gate decision): runs, NAV start → end, PnL incl. costs, return, trades/rejections, turnover total and per run, worst drawdown, halts, reconciliation mismatches, ADV clips, forced reruns, alerts by kind, and gate checks / blocks / block rate. Runs count by signal date; alerts and gate checks by UTC timestamp. Written by `make paper-daily` and `make paper-review`. |
 | Backup / restore | `python scripts/paper_backup.py backup [--out FILE] [--force]`, `verify FILE`, `restore FILE [--force]`, `list`. The `.tar.gz` holds `results/paper/`, `data/paper/` and the top-level `results/simulation/` broker state (needed so the next run reconciles), plus `BACKUP_MANIFEST.json` with SHA-256 and size per file. Verify rejects modified, missing, unlisted, absolute or `..` members. Restore verifies first, refuses to overwrite existing state without `--force`, writes a `pre-restore-*.tar.gz` safety backup when forced, extracts to a staging folder, re-checks every hash, then swaps the folders in. `backups/` is gitignored. |
 | Journal | `results/paper/journal.csv` and `results/paper/journal.md`: one row per signal date with NAV, PnL vs previous run, return, trades, rejected orders, turnover, drawdown, drawdown-halt flag, vol scale, ADV clips (target weights clipped / orders clipped), data-check status and reconciliation status. `results/paper/ledger.csv` is the run ledger. Reruns replace rows instead of duplicating them; duplicate ledger rows are a health ERROR. |
 
@@ -307,6 +311,10 @@ make health
 make paper-backup                                         # backups/paper/paper-backup-<UTC>.tar.gz
 python scripts/paper_backup.py verify backups/paper/paper-backup-<UTC>.tar.gz
 ```
+
+Scheduling examples (cron and a systemd timer; not installed by this repo) are in
+`docs/operational_workflow.md`. The dashboard's "Paper Account" tab shows `status.json`, the
+journal NAV and recent alerts (read-only).
 
 Paper refreshes run yfinance without its progress bar and do not request excluded symbols
 (BK), so paper logs show one summary line per file instead of the download bar.

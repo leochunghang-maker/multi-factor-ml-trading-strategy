@@ -1,4 +1,4 @@
-.PHONY: install test smoke signals paper paper-data paper-data-check paper-status paper-backup dashboard report health significance data-check research doc-metrics
+.PHONY: install test smoke signals paper paper-data paper-data-check paper-status paper-backup paper-daily paper-review dashboard report health significance data-check research doc-metrics
 
 install:
 	pip install -r requirements.txt
@@ -26,6 +26,12 @@ paper-status:
 
 paper-backup:
 	python scripts/paper_backup.py backup
+
+paper-daily:
+	python scripts/run_paper_daily.py
+
+paper-review:
+	python scripts/paper_weekly_review.py
 
 dashboard:
 	streamlit run dashboard/app.py

@@ -51,6 +51,62 @@ no restore step is needed before `make research`. See README, "Paper-run operati
 Offline demo without downloading: `python src/data_loader.py --paper --seed-from-research`, then
 `python scripts/run_daily_paper_trading.py --skip-data-refresh --as-of 2026-10-30`.
 
+## Scheduling the Paper Day (examples, not installed)
+
+`make paper-daily` (`scripts/run_paper_daily.py`) runs one complete simulated paper day:
+lock → data refresh → data gate → paper day → status → weekly review → rotating backup (keeps
+the newest `paper_trading.backup_keep` `paper-daily-*.tar.gz`; manual and `pre-restore-*`
+backups are never pruned) → unlock. Exit codes: 0 ok or already done, 1 failed, 2 blocked
+(see `results/paper/status.md`), 3 another run holds the lock. Nothing is sent anywhere; check
+`make paper-status`, `results/paper/alerts.jsonl` and `results/operations/platform_events.jsonl`.
+
+Run it after the US close once Yahoo has the day's bar, e.g. 18:30 New York time, Monday-Friday
+(NYSE holidays are harmless: the run finds no new signal date and skips, or the gate blocks).
+Adjust `/path/to/repo`; the repo's virtualenv is assumed at `.venv/`.
+
+cron (`crontab -e`; `CRON_TZ` is supported by cronie and most Linux crons; otherwise convert the
+time to the machine's zone, e.g. 06:30 or 07:30 Hong Kong time Tue-Sat depending on US DST):
+
+```cron
+CRON_TZ=America/New_York
+30 18 * * 1-5  cd /path/to/repo && .venv/bin/python scripts/run_paper_daily.py >> results/operations/paper_daily.log 2>&1
+0 10 * * 6     cd /path/to/repo && .venv/bin/python scripts/paper_weekly_review.py --week-of "$(date -d yesterday +\%F)" >> results/operations/paper_daily.log 2>&1
+```
+
+systemd (user units in `~/.config/systemd/user/`, then `systemctl --user daemon-reload &&
+systemctl --user enable --now paper-daily.timer`):
+
+```ini
+# paper-daily.service
+[Unit]
+Description=Simulated paper-trading day (local files only)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/path/to/repo
+ExecStart=/path/to/repo/.venv/bin/python scripts/run_paper_daily.py
+# 2 = blocked by the data gate, 3 = locked: expected outcomes, not unit failures
+SuccessExitStatus=2 3
+TimeoutStartSec=1h
+```
+
+```ini
+# paper-daily.timer
+[Unit]
+Description=Run the simulated paper day after the US close
+
+[Timer]
+OnCalendar=Mon..Fri 18:30 America/New_York
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+The lock makes overlapping triggers safe (a manual `make paper` during a scheduled run exits with
+code 3). A crashed run leaves a stale lock that the next run removes automatically (dead pid on
+the same host, or older than `paper_trading.lock_stale_hours`).
+
 ## Simulation Workflow
 
 Run:

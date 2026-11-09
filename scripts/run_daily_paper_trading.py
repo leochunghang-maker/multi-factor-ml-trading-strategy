@@ -35,6 +35,8 @@ from src.operations.paper_ops import (
     run_paper_day,
 )
 from src.operations.paper_alerts import raise_alert
+from src.operations.paper_daily import LOCKED_EXIT_CODE, paper_lock
+from src.operations.run_lock import LockHeld
 from src.operations.paper_status import write_paper_status
 from src.reporting.summary import generate_summary_report
 
@@ -176,6 +178,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Date used by the data-freshness gate (default: today). Staleness is an ERROR on this path.",
     )
     parser.add_argument(
+        "--no-lock",
+        action="store_true",
+        help="Do not take the paper run lock (used by scripts/run_paper_daily.py, which already holds it).",
+    )
+    parser.add_argument(
         "--data-dir",
         default=None,
         help="Paper data dir (default: paper_trading.data_dir = data/paper, or $PAPER_DATA_DIR). "
@@ -198,6 +205,23 @@ def blocked(run_id: str, step: str, message: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.no_lock:
+        return run_workflow(args)
+    lock = paper_lock(log=lambda line: print(f"   {line}"))
+    try:
+        lock.acquire()
+    except LockHeld as exc:
+        print(f"Not starting: {exc}")
+        raise_alert(PaperOpsPaths.default(), "run_blocked", str(exc), details={"reason": "lock_held"})
+        write_paper_status(PaperOpsPaths.default())
+        return LOCKED_EXIT_CODE
+    try:
+        return run_workflow(args)
+    finally:
+        lock.release()
+
+
+def run_workflow(args: argparse.Namespace) -> int:
     results: list[StepResult] = []
     set_deterministic_seed()
     metadata = create_run_metadata(

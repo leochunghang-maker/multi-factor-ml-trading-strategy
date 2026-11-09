@@ -17,6 +17,8 @@ Layout (``results/paper/``, gitignored operator-local state)::
     journal.csv / journal.md     concise daily journal (upserted / re-rendered)
     latest_reconciliation.json   pre-run reconciliation result (read by health)
     last_gate.json               last pre-run data gate result (read by health)
+    gate_history.csv             one row per pre-run data gate decision (weekly review)
+    reviews/weekly-<YYYY>-W<ww>.md/.json   weekly review (src/operations/paper_review.py)
     alerts.jsonl                 local alerts: gate block, reconciliation mismatch,
                                  drawdown halt (src/operations/paper_alerts.py)
     status.md / status.json      summary written by ``make paper-status`` and after
@@ -98,6 +100,14 @@ class PaperOpsPaths:
     @property
     def gate(self) -> Path:
         return self.root / "last_gate.json"
+
+    @property
+    def gate_history(self) -> Path:
+        return self.root / "gate_history.csv"
+
+    @property
+    def reviews(self) -> Path:
+        return self.root / "reviews"
 
     @property
     def alerts(self) -> Path:
@@ -357,6 +367,7 @@ def enforce_data_gate(
     paths: PaperOpsPaths, gate: dict[str, Any], run_id: str | None = None, log: Callable[[str], None] | None = None
 ) -> None:
     write_json_atomic(paths.gate, gate)
+    _append_gate_history(paths, gate, run_id)
     if gate["blocked"]:
         message = (
             "data checks failed for the paper run (staleness is an ERROR on this path): "
@@ -368,6 +379,19 @@ def enforce_data_gate(
         _refresh_status(paths)
         raise PaperRunBlocked(message)
     _refresh_status(paths)
+
+
+GATE_HISTORY_COLUMNS = ["checked_at", "as_of", "status", "blocked", "errors", "run_id"]
+
+
+def _append_gate_history(paths: PaperOpsPaths, gate: dict[str, Any], run_id: str | None) -> None:
+    row = {
+        "checked_at": gate.get("checked_at") or _now(), "as_of": gate.get("as_of"), "status": gate.get("status"),
+        "blocked": bool(gate.get("blocked")), "errors": len(gate.get("errors") or []), "run_id": run_id,
+    }
+    frame = read_csv_safe(paths.gate_history, GATE_HISTORY_COLUMNS)
+    frame = pd.concat([frame, pd.DataFrame([row])], ignore_index=True)
+    write_csv_atomic(paths.gate_history, frame.reindex(columns=GATE_HISTORY_COLUMNS))
 
 
 # -------------------------------------------------------------------- journal

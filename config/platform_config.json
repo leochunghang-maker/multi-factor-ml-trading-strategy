@@ -163,6 +163,10 @@
     "note": "n_trials = sum(trial_increment) in research/trial_log.csv + trial_padding. The log is backfilled from git history (every configuration whose result was observed) and must be appended BEFORE running a new variant. trial_padding=14 is a fixed, documented allowance for unrecorded pre-2026-11 iterations and never-swept researcher choices. V[SR] for each family is the sample variance of that family's reported_sharpe values in the log; information-ratio DSR uses the pooled variance over all reported Sharpes (ir_variance_source=pooled) because no IR history exists. hac_lags=null uses the Newey-West rule floor(4*(T/100)^(2/9))."
   },
   "paper_trading": {
-    "data_dir": "data/paper"
+    "data_dir": "data/paper",
+    "backup_keep": 10,
+    "backup_dir": "backups/paper",
+    "lock_path": "results/operations/paper_daily.lock",
+    "lock_stale_hours": 6
   }
 }

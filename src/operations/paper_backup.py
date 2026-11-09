@@ -272,3 +272,14 @@ def restore_backup(
 def list_backups(root: str | Path = ".") -> list[Path]:
     base = Path(root) / DEFAULT_BACKUP_DIR
     return sorted(base.glob("*.tar.gz")) if base.exists() else []
+
+
+def prune_backups(directory: str | Path, keep: int, prefix: str = "paper-daily-") -> list[Path]:
+    """Delete all but the newest ``keep`` archives named ``<prefix>*.tar.gz`` (others untouched)."""
+    if keep < 1:
+        raise ValueError("keep must be at least 1")
+    archives = sorted(Path(directory).glob(f"{prefix}*.tar.gz")) if Path(directory).exists() else []
+    removed = archives[:-keep] if len(archives) > keep else []
+    for path in removed:
+        path.unlink()
+    return removed
