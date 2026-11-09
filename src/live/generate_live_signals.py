@@ -21,6 +21,7 @@ from src.config import (
 from src.data.io import load_ml_dataset
 from src.data.universe import build_eligibility_mask, eligible_tickers_on_date
 from src.models.ml import train_random_forest
+from src.data.required import run_cli
 
 
 def download_latest_prices() -> pd.DataFrame:
@@ -190,4 +191,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

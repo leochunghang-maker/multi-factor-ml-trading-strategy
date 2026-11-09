@@ -22,6 +22,7 @@ from src.reporting.doc_metrics import (  # noqa: E402
     expected_metrics,
     fix_documents,
 )
+from src.data.required import run_cli  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,4 +47,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_cli(main))

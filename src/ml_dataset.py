@@ -6,6 +6,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from src.config import FORWARD_RETURNS_PATH, MEAN_REVERSION_PATH, ML_DATASET_PATH, MOMENTUM_PATH
 from src.data.io import load_factor_frame, load_price_data
 from src.features.factors import build_ml_dataset
+from src.data.required import run_cli
 
 
 def main() -> None:
@@ -29,4 +30,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

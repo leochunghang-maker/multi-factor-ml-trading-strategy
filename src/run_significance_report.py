@@ -41,6 +41,7 @@ from src.config import (
     WALK_FORWARD_PERIOD_RETURNS_PATH,
 )
 from src.data.io import load_price_data
+from src.data.required import require_file, run_cli
 from src.portfolio.portfolio import month_end_holding_period_returns
 from src.reporting.significance import (
     benchmark_relative_summary,
@@ -65,7 +66,7 @@ def load_walk_forward_returns(cached: bool) -> pd.Series:
 
 
 def load_multi_factor_returns() -> pd.Series:
-    frame = pd.read_csv(MULTI_FACTOR_RESULTS_PATH, parse_dates=["date"]).set_index("date")
+    frame = pd.read_csv(require_file(MULTI_FACTOR_RESULTS_PATH), parse_dates=["date"]).set_index("date")
     return frame["portfolio_return"]
 
 
@@ -220,4 +221,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

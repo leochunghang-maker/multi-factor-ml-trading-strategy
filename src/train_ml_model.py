@@ -20,6 +20,7 @@ from src.models.ml import (
     train_random_forest,
     train_test_split_by_date,
 )
+from src.data.required import run_cli
 
 
 def main() -> None:
@@ -71,4 +72,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

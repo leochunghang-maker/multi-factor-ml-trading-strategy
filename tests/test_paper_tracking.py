@@ -125,7 +125,8 @@ def test_weekly_cumulative_gap_warning(paths) -> None:
 def test_thresholds_come_from_config_and_cost_model() -> None:
     settings = tracking_settings()
     for key, value in DEFAULT_TRACKING.items():
-        assert settings[key] == value  # config matches the documented a-priori defaults
+        if key != "modeled_cost_bps":
+            assert settings[key] == value  # config matches the documented a-priori defaults
     assert settings["modeled_cost_bps"] == pytest.approx(17.0)  # 10 commission + 5 slippage + 2 half-spread
     custom = tracking_settings({"execution": {"transaction_cost": 0.002, "slippage_bps": 1, "half_spread_bps": 1}})
     assert custom["modeled_cost_bps"] == pytest.approx(22.0)

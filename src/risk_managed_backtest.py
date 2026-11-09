@@ -13,6 +13,7 @@ from src.data.io import load_return_series
 from src.reporting.charts import save_equity_curve
 from src.reporting.metrics import calculate_performance_metrics, equity_curve
 from src.risk import apply_volatility_target
+from src.data.required import run_cli
 
 
 def main() -> None:
@@ -48,4 +49,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

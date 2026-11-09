@@ -15,6 +15,7 @@ from src.config import (
     WALK_FORWARD_PERIOD_RETURNS_PATH,
 )
 from src.reporting.charts import save_equity_curve, save_strategy_vs_benchmark
+from src.data.required import run_cli
 
 
 def main() -> None:
@@ -67,4 +68,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

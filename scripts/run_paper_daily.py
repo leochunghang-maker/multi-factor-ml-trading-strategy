@@ -21,6 +21,7 @@ sys.path.append(str(ROOT))
 
 from src.operations.paper_daily import daily_settings, run_paper_daily  # noqa: E402
 from src.operations.structured_logging import log_event  # noqa: E402
+from src.data.required import run_cli  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -59,4 +60,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_cli(main))

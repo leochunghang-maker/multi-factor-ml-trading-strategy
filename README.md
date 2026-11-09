@@ -795,6 +795,16 @@ Workflow settings live in `config/platform_config.json`, including:
 - Simulation settings.
 - Monitoring thresholds.
 
+`tests/test_config_keys.py` statically checks that every config key read in `src/` exists in
+`config/platform_config.json` and that every key in the file is read somewhere (descriptive
+`*note` keys, `strategy.universe_name` and `execution.mode` excepted), so a typo cannot fall back to
+a silent code default. `execution.mode` must stay `local_simulated_paper_only`.
+
+Missing inputs fail with one line naming the file and the command that creates it, exit code 2,
+no traceback (`src/data/required.py`), e.g.
+``ERROR: Missing input file data/ml_dataset.csv; create it with `python src/ml_dataset.py`.``
+Checked-in research data is restored with `git checkout -- <file>` rather than re-downloaded.
+
 Operational runs save:
 
 - Structured JSONL events.

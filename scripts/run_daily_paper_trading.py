@@ -16,6 +16,7 @@ from src.config import (
 )
 from src.data.io import load_price_data
 from src.data.paths import DataPaths
+from src.data.required import require_file, run_cli
 from src.execution.run_daily_simulation import (
     load_latest_prices,
     run_daily_simulation,
@@ -88,7 +89,7 @@ def validate_signal_file(path: str = LIVE_SIGNALS_PATH) -> list[str]:
     # Paper trading must be validated before live trading because operational
     # failures usually start as small data problems: stale files, duplicate
     # symbols, bad weights, or unexplained turnover.
-    signals = pd.read_csv(path, parse_dates=["date"])
+    signals = pd.read_csv(require_file(path), parse_dates=["date"])
     warnings = []
 
     if signals.empty:
@@ -363,4 +364,4 @@ def run_workflow(args: argparse.Namespace) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_cli(main))

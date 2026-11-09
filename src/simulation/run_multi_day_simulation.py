@@ -52,6 +52,7 @@ from src.operations.structured_logging import log_event
 from src.operations.metadata import create_run_metadata, set_deterministic_seed
 from src.portfolio.allocation import build_paper_target_weights, normalize_long_only_weights
 from src.risk.drawdown import is_drawdown_halted, portfolio_drawdown
+from src.data.required import run_cli
 
 
 @dataclass(frozen=True)
@@ -626,4 +627,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

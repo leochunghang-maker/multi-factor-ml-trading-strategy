@@ -21,6 +21,8 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 
+from src.data.required import require_file
+
 MARKER = re.compile(r"<!--m:([A-Za-z0-9_.\-]+)-->(.*?)<!--/m-->")
 DEFAULT_DOCUMENTS = ("README.md", "reports/quant_research_report.md")
 
@@ -205,14 +207,14 @@ def expected_metrics(root: str | Path = ".") -> dict[str, str]:
 
     root = Path(root)
     values: dict[str, str] = {}
-    mf = pd.read_csv(root / MULTI_FACTOR_RESULTS_PATH, parse_dates=["date"]).set_index("date")
-    wf = pd.read_csv(root / WALK_FORWARD_PERIOD_RETURNS_PATH, parse_dates=["date"]).set_index("date")
+    mf = pd.read_csv(require_file(root / MULTI_FACTOR_RESULTS_PATH), parse_dates=["date"]).set_index("date")
+    wf = pd.read_csv(require_file(root / WALK_FORWARD_PERIOD_RETURNS_PATH), parse_dates=["date"]).set_index("date")
     values.update(_book_values("mf", mf))
     values.update(_book_values("wf", wf))
     trials, n = _trial_values(root)
     values.update(trials)
-    values.update(_significance_values(pd.read_csv(root / SIGNIFICANCE_REPORT_PATH), n))
-    values.update(_relative_values(pd.read_csv(root / BENCHMARK_RELATIVE_REPORT_PATH)))
+    values.update(_significance_values(pd.read_csv(require_file(root / SIGNIFICANCE_REPORT_PATH)), n))
+    values.update(_relative_values(pd.read_csv(require_file(root / BENCHMARK_RELATIVE_REPORT_PATH))))
     values.update(_sim_values(root))
     return values
 

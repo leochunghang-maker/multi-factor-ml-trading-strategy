@@ -5,6 +5,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from src.config import REPORTS_DIR, SUMMARY_REPORT_CSV_PATH, SUMMARY_REPORT_MARKDOWN_PATH
 from src.reporting.summary import generate_summary_report
+from src.data.required import run_cli
 
 
 def main() -> None:
@@ -20,4 +21,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

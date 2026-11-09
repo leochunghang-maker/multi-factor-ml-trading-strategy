@@ -233,7 +233,9 @@ def research_beta_panel(
         print(f"WARNING: {BENCHMARK_PRICES_PATH} missing {BETA_BENCHMARK}; beta-neutral legs disabled")
         return None
     if prices is None:
-        prices = pd.read_csv(PRICE_DATA_PATH, index_col=0, parse_dates=True)
+        from src.data.required import require_file
+
+        prices = pd.read_csv(require_file(PRICE_DATA_PATH), index_col=0, parse_dates=True)
     if dates is None:
         from src.portfolio.portfolio import month_end_trading_dates
 

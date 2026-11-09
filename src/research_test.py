@@ -8,6 +8,7 @@ import pandas as pd
 from src.config import FORWARD_RETURNS_PATH, MOMENTUM_IC_RESULTS_PATH, MOMENTUM_PATH, RESEARCH_MIN_ASSETS
 from src.data.io import load_factor_frame
 from src.reporting.metrics import information_coefficient
+from src.data.required import run_cli
 
 
 def run_momentum_ic_test() -> pd.DataFrame:
@@ -44,4 +45,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

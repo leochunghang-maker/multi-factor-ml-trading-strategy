@@ -40,6 +40,7 @@ DEFAULT_TRACKING = {
     "cost_ratio_max": 2.0,
     "min_traded_fraction_for_cost_check": 0.005,
     "max_missing_target_weight": 0.05,
+    "modeled_cost_bps": None,  # None: commission + slippage + half-spread from execution
 }
 
 TRACKING_COLUMNS = [
@@ -242,7 +243,7 @@ def weekly_tracking(frame: pd.DataFrame, start, end, settings: dict[str, Any] | 
         "mean_cost_ratio": float(ratios.mean()) if len(ratios) else None,
         "max_weight_deviation": float(devs.max()) if len(devs) else None,
         "findings": [{"severity": s, "check": c, "message": m} for s, c, m in findings],
-        "thresholds": {k: settings[k] for k in (*DEFAULT_TRACKING, "modeled_cost_bps")},
+        "thresholds": {k: settings[k] for k in DEFAULT_TRACKING},
     }
 
 

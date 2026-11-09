@@ -11,6 +11,7 @@ from src.config import (
 )
 from src.data.io import load_price_data
 from src.features.factors import calculate_factor_frames
+from src.data.required import run_cli
 
 
 def main() -> None:
@@ -27,4 +28,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

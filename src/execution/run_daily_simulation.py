@@ -35,6 +35,7 @@ from src.config import (
     SIMULATED_TRADE_HISTORY_PATH,
 )
 from src.portfolio.constraints import average_daily_dollar_volume, load_optional_volume_data
+from src.data.required import require_file, run_cli
 from src.execution.simulated_broker import SimulatedBroker, SimulatedOrder, append_csv
 from src.portfolio.allocation import build_paper_target_weights, realized_vs_target_frame
 from src.risk.drawdown import is_drawdown_halted
@@ -48,14 +49,14 @@ def configure_logging() -> None:
 
 
 def load_latest_prices(path: str = PRICE_DATA_PATH) -> tuple[dict[str, float], pd.Timestamp]:
-    prices = pd.read_csv(path, index_col=0, parse_dates=True)
+    prices = pd.read_csv(require_file(path), index_col=0, parse_dates=True)
     latest_date = prices.dropna(how="all").index.max()
     latest_prices = prices.loc[latest_date].dropna()
     return latest_prices.to_dict(), latest_date
 
 
 def load_long_only_targets(path: str = LIVE_SIGNALS_PATH) -> pd.DataFrame:
-    signals = pd.read_csv(path, parse_dates=["date"])
+    signals = pd.read_csv(require_file(path), parse_dates=["date"])
     # Empty signals are dangerous because they can accidentally trigger a full
     # liquidation or hide a broken model/data pipeline. Stop and investigate.
     if signals.empty:
@@ -621,4 +622,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

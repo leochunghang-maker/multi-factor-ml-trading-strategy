@@ -6,6 +6,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from src.backtests.factor_backtests import run_momentum_backtest
 from src.config import MOMENTUM_BACKTEST_PATH, MOMENTUM_EQUITY_CURVE_PATH
 from src.reporting.charts import save_equity_curve
+from src.data.required import run_cli
 
 
 def main() -> None:
@@ -32,4 +33,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

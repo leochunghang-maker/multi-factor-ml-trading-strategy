@@ -40,6 +40,7 @@ from src.portfolio.portfolio import (  # noqa: E402
     month_end_trading_dates,
 )
 from src.risk.beta import build_beta_panel, betas_on_date, load_benchmark_close  # noqa: E402
+from src.data.required import run_cli  # noqa: E402
 
 OUT = ROOT / "results" / "multi_factor_beta_diagnosis.csv"
 
@@ -149,4 +150,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)
