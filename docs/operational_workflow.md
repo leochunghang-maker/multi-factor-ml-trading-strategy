@@ -26,18 +26,25 @@ python scripts/run_daily_paper_trading.py
 
 The workflow performs:
 
-1. data refresh (`src/data_loader.py` full refresh through today; skip with `--skip-data-refresh`),
-2. pre-run data gate (staleness and any other data ERROR block the run; exit code 2),
+1. data refresh into the paper data dir `data/paper/` (`src/data_loader.py --paper`: prices, volume
+   and SPY through today plus a paper manifest; skip with `--skip-data-refresh`),
+2. pre-run data gate on `data/paper/` (staleness in NYSE trading days and any other data ERROR
+   block the run; exit code 2),
 3. idempotency check (a completed signal date is skipped; `--force` replaces the latest run),
-4. feature generation,
-5. signal generation (from the gated local prices),
+4. feature generation (factor files and ML dataset written to `data/paper/`),
+5. signal generation (from the gated paper prices and paper ML dataset),
 6. signal and portfolio safety checks,
 7. simulated broker execution with reconciliation against the previous run, a dated snapshot in
    `results/paper/runs/<date>/`, and ledger/journal rows in `results/paper/`,
 8. risk report generation,
 9. dashboard/report update and system health status update (reconciliation mismatches are ERROR).
 
-Paper-run state under `results/paper/` is local and gitignored. See README, "Paper-run operations".
+Paper-run state under `results/paper/` and paper data under `data/paper/` are local and
+gitignored. The checked-in research snapshot under `data/` is never written by this workflow, so
+no restore step is needed before `make research`. See README, "Paper-run operations".
+
+Offline demo without downloading: `python src/data_loader.py --paper --seed-from-research`, then
+`python scripts/run_daily_paper_trading.py --skip-data-refresh --as-of 2026-10-30`.
 
 ## Simulation Workflow
 

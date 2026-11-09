@@ -332,18 +332,19 @@ def save_paper_trading_status_report(
     path.write_text("\n".join(lines) + "\n")
 
 
-def run_daily_simulation() -> dict:
+def run_daily_simulation(price_path: str = PRICE_DATA_PATH, volume_path: str = VOLUME_DATA_PATH) -> dict:
+    """One simulated rebalance. The daily paper runner passes the paper data dir paths."""
     configure_logging()
     run_timestamp = datetime.now(UTC).isoformat(timespec="seconds")
 
     broker = SimulatedBroker.load(SIMULATED_BROKER_STATE_PATH)
-    prices, price_date = load_latest_prices()
+    prices, price_date = load_latest_prices(price_path)
     targets = load_long_only_targets()
     signal_date = validate_signal_freshness(targets, price_date)
-    volumes = load_optional_volume_data(VOLUME_DATA_PATH)
+    volumes = load_optional_volume_data(volume_path)
     if volumes is not None:
         broker.adv_dollars = average_daily_dollar_volume(
-            pd.read_csv(PRICE_DATA_PATH, index_col=0, parse_dates=True),
+            pd.read_csv(price_path, index_col=0, parse_dates=True),
             volumes,
             pd.Timestamp(price_date),
             IMPACT_ADV_LOOKBACK_DAYS,

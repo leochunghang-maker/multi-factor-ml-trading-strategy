@@ -44,11 +44,12 @@ def test_trading_days_between_counts_weekdays_after_start() -> None:
 def test_freshness_warns_when_stale_and_passes_when_fresh() -> None:
     p = _panel()
     last = p.index[-1]
-    fresh = check_freshness({"price_data": p}, last + pd.offsets.BDay(5), S)
+    W = {**S, "calendar": "weekdays"}  # plain weekday counting; NYSE holidays: tests/test_market_calendar.py
+    fresh = check_freshness({"price_data": p}, last + pd.offsets.BDay(5), W)
     assert fresh == []
-    stale = check_freshness({"price_data": p}, last + pd.offsets.BDay(6), S)
+    stale = check_freshness({"price_data": p}, last + pd.offsets.BDay(6), W)
     assert len(stale) == 1 and stale[0].severity == "WARNING" and stale[0].check == "freshness"
-    strict = check_freshness({"price_data": p}, last + pd.offsets.BDay(6), {**S, "stale_severity": "ERROR"})
+    strict = check_freshness({"price_data": p}, last + pd.offsets.BDay(6), {**W, "stale_severity": "ERROR"})
     assert strict[0].severity == "ERROR"
 
 

@@ -1,4 +1,4 @@
-.PHONY: install test smoke signals paper dashboard report health significance data-check research doc-metrics
+.PHONY: install test smoke signals paper paper-data paper-data-check dashboard report health significance data-check research doc-metrics
 
 install:
 	pip install -r requirements.txt
@@ -14,6 +14,12 @@ signals:
 
 paper:
 	python scripts/run_daily_paper_trading.py --skip-data-refresh
+
+paper-data:
+	python src/data_loader.py --paper
+
+paper-data-check:
+	python src/check_data.py --paper
 
 dashboard:
 	streamlit run dashboard/app.py

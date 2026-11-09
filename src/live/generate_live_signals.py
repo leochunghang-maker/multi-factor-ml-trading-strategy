@@ -68,11 +68,11 @@ def calculate_live_features(prices: pd.DataFrame) -> pd.DataFrame:
     return features.dropna(subset=FEATURES).reset_index(drop=True)
 
 
-def train_latest_model():
+def train_latest_model(dataset_path: str = ML_DATASET_PATH):
     # If no saved live model exists, train the same Random Forest architecture
     # used in research on the latest local ML dataset. This produces rankings,
     # not broker orders or guaranteed return forecasts.
-    dataset = load_ml_dataset(ML_DATASET_PATH).sort_values("date")
+    dataset = load_ml_dataset(dataset_path).sort_values("date")
     model = train_random_forest(dataset[FEATURES], dataset[TARGET])
     Path(LIVE_RESULTS_DIR).mkdir(parents=True, exist_ok=True)
     with Path(LIVE_MODEL_PATH).open("wb") as file:
@@ -80,12 +80,12 @@ def train_latest_model():
     return model
 
 
-def load_or_train_model():
+def load_or_train_model(dataset_path: str = ML_DATASET_PATH):
     model_path = Path(LIVE_MODEL_PATH)
     if model_path.exists():
         with model_path.open("rb") as file:
             return pickle.load(file), "loaded saved Random Forest model"
-    return train_latest_model(), "trained Random Forest model from local research dataset"
+    return train_latest_model(dataset_path), f"trained Random Forest model from {dataset_path}"
 
 
 def composite_factor_score(features: pd.DataFrame) -> pd.Series:
@@ -150,7 +150,9 @@ def build_live_signals(features: pd.DataFrame, model, model_reason: str) -> pd.D
     ]
 
 
-def generate_live_signals(prices: pd.DataFrame | None = None) -> pd.DataFrame:
+def generate_live_signals(
+    prices: pd.DataFrame | None = None, dataset_path: str = ML_DATASET_PATH
+) -> pd.DataFrame:
     """Build the paper-trading signal file.
 
     ``prices`` (e.g. the local ``data/price_data.csv`` that passed the paper data
@@ -169,7 +171,7 @@ def generate_live_signals(prices: pd.DataFrame | None = None) -> pd.DataFrame:
         raise RuntimeError(
             "No eligible live tickers after tradability/index-membership filters."
         )
-    model, model_reason = load_or_train_model()
+    model, model_reason = load_or_train_model(dataset_path)
     signals = build_live_signals(features, model, model_reason)
 
     Path(LIVE_RESULTS_DIR).mkdir(parents=True, exist_ok=True)

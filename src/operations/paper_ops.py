@@ -297,8 +297,17 @@ def reconcile_start(paths: PaperOpsPaths, start: dict[str, Any], before: str | N
 # -------------------------------------------------------------------- data gate
 
 
-def paper_data_gate(as_of=None, config: dict[str, Any] | None = None, root: str | Path = ".") -> dict[str, Any]:
-    """Data checks with paper severities: staleness is ``paper_stale_severity`` (ERROR)."""
+def paper_data_gate(
+    as_of=None,
+    config: dict[str, Any] | None = None,
+    root: str | Path = ".",
+    data_paths=None,
+) -> dict[str, Any]:
+    """Data checks with paper severities: staleness is ``paper_stale_severity`` (ERROR).
+
+    ``data_paths`` is the paper data dir (``DataPaths.paper()``); its dated inputs are
+    checked against its own manifest. ``None`` checks the research ``data/`` files.
+    """
     from src.data.quality import data_check_settings, overall_status, run_data_checks
 
     settings = data_check_settings(config)
@@ -311,11 +320,14 @@ def paper_data_gate(as_of=None, config: dict[str, Any] | None = None, root: str 
         **paper_config,
         "data_checks": {**settings, "stale_severity": settings.get("paper_stale_severity", "ERROR")},
     }
-    findings, summary = run_data_checks(as_of=as_of, config=paper_config, root=root)
+    findings, summary = run_data_checks(as_of=as_of, config=paper_config, root=root, data_paths=data_paths)
     errors = [f"{f.file}: {f.message}" for f in findings if f.severity == "ERROR"]
     return {
         "checked_at": _now(),
         "as_of": summary["as_of"],
+        "calendar": summary.get("calendar"),
+        "data_dir": summary.get("data_dir"),
+        "files": summary.get("files"),
         "status": overall_status(findings),
         "blocked": bool(errors),
         "errors": errors,
@@ -329,7 +341,7 @@ def enforce_data_gate(paths: PaperOpsPaths, gate: dict[str, Any]) -> None:
         raise PaperRunBlocked(
             "data checks failed for the paper run (staleness is an ERROR on this path): "
             + "; ".join(gate["errors"])
-            + ". Refresh data (python src/data_loader.py --end today --with-benchmark) and retry."
+            + ". Refresh the paper data (python src/data_loader.py --paper) and retry."
         )
 
 

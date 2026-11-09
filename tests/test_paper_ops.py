@@ -243,7 +243,7 @@ def test_paper_gate_blocks_stale_data_but_research_only_warns(tmp_path) -> None:
     assert stale and all(f.severity == "WARNING" for f in stale)
 
     paths = PaperOpsPaths(tmp_path / "paper")
-    with pytest.raises(PaperRunBlocked, match="Refresh data"):
+    with pytest.raises(PaperRunBlocked, match="Refresh the paper data"):
         enforce_data_gate(paths, gate)
     assert json.loads(paths.gate.read_text())["blocked"] is True
     assert ("WARNING", "paper_data_gate") in [(s, c) for s, c, _ in paper_health_findings(paths)]

@@ -8,18 +8,14 @@ import pandas as pd
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from src.config import (
-    DAILY_RETURNS_PATH,
-    FORWARD_RETURNS_PATH,
     LIVE_SIGNALS_PATH,
     MAX_PAPER_POSITIONS,
     MAX_PAPER_TURNOVER,
-    MEAN_REVERSION_PATH,
-    ML_DATASET_PATH,
-    MOMENTUM_PATH,
     PAPER_TRADING_STATUS_REPORT_PATH,
     SIMULATED_LATEST_SNAPSHOT_PATH,
 )
-from src.data.io import load_factor_frame, load_price_data
+from src.data.io import load_price_data
+from src.data.paths import DataPaths
 from src.execution.run_daily_simulation import (
     load_latest_prices,
     run_daily_simulation,
@@ -52,34 +48,28 @@ def print_step(index: int, name: str) -> None:
     print(f"{index}. {name}...")
 
 
-def refresh_price_data() -> pd.DataFrame:
-    """Full-history refresh through today with the research loader (prices, volume, SPY).
+def refresh_price_data(data_paths: DataPaths) -> pd.DataFrame:
+    """Full-history refresh through today into the paper data dir (prices, volume, SPY).
 
     Uses ``src/data_loader.py`` so price/volume/benchmark stay aligned and the
-    excluded-symbol decisions (e.g. BK) are applied. This updates the shared
-    data snapshot; the data manifest will flag the change.
+    excluded-symbol decisions (e.g. BK) are applied. Writes only ``data_paths``
+    (default ``data/paper/``); the checked-in research snapshot under ``data/``
+    is never rewritten by the paper workflow.
     """
-    from src.data_loader import (
-        download_benchmark_data,
-        download_price_data,
-        report_changes_vs_manifest,
-        resolve_end_date,
-    )
+    from src.data_loader import refresh_paper_data
 
-    end = resolve_end_date("today")
-    download_price_data(end=end)
-    download_benchmark_data(end=end)
-    report_changes_vs_manifest()
-    return load_price_data()
+    refresh_paper_data(end="today", paths=data_paths)
+    return load_price_data(data_paths.price_data)
 
 
-def generate_features() -> None:
-    prices = load_price_data()
+def generate_features(data_paths: DataPaths) -> None:
+    """Rebuild factor files and the ML dataset from the paper prices, inside the paper dir."""
+    prices = load_price_data(data_paths.price_data)
     factors = calculate_factor_frames(prices)
-    factors["daily_returns"].to_csv(DAILY_RETURNS_PATH)
-    factors["momentum_12m"].to_csv(MOMENTUM_PATH)
-    factors["mean_reversion_1m"].to_csv(MEAN_REVERSION_PATH)
-    factors["forward_returns_1m"].to_csv(FORWARD_RETURNS_PATH)
+    factors["daily_returns"].to_csv(data_paths.daily_returns)
+    factors["momentum_12m"].to_csv(data_paths.momentum)
+    factors["mean_reversion_1m"].to_csv(data_paths.mean_reversion)
+    factors["forward_returns_1m"].to_csv(data_paths.forward_returns)
 
     ml_dataset = build_ml_dataset(
         factors["momentum_12m"],
@@ -87,7 +77,7 @@ def generate_features() -> None:
         factors["forward_returns_1m"],
         prices,
     )
-    ml_dataset.to_csv(ML_DATASET_PATH, index=False)
+    ml_dataset.to_csv(data_paths.ml_dataset, index=False)
 
 
 def validate_signal_file(path: str = LIVE_SIGNALS_PATH) -> list[str]:
@@ -183,6 +173,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Date used by the data-freshness gate (default: today). Staleness is an ERROR on this path.",
     )
+    parser.add_argument(
+        "--data-dir",
+        default=None,
+        help="Paper data dir (default: paper_trading.data_dir = data/paper, or $PAPER_DATA_DIR). "
+             "The research data/ snapshot is never written by this workflow.",
+    )
     return parser.parse_args(argv)
 
 
@@ -208,37 +204,40 @@ def main(argv: list[str] | None = None) -> int:
             "force": args.force,
             "allow_reconciliation_mismatch": args.allow_reconciliation_mismatch,
             "as_of": args.as_of,
+            "data_dir": args.data_dir,
         },
     )
     run_id = metadata["run_id"]
     paths = PaperOpsPaths.default()
+    data_paths = DataPaths.paper(args.data_dir)
     log_event("workflow_started", "Daily paper-trading workflow started.", run_id=run_id)
 
     print("Daily paper-trading validation workflow")
     print("No real-money trading is enabled. This run uses local files and the simulated broker only.")
+    print(f"Paper data dir: {data_paths.root}/ (research data/ is not modified)")
     print()
 
     if args.skip_data_refresh:
         print("1. Data refresh...")
-        print("   skipped: using existing local price data")
+        print(f"   skipped: using existing paper data in {data_paths.root}/")
         results.append(StepResult("Data refresh", True, "skipped by operator"))
         log_event("step_skipped", "Data refresh skipped by operator.", run_id=run_id, step="Data refresh")
     else:
-        prices = run_step(results, 1, "Data refresh", refresh_price_data)
+        prices = run_step(results, 1, "Data refresh", lambda: refresh_price_data(data_paths))
         latest_date = prices.dropna(how="all").index.max()
         print(f"   latest price date: {latest_date.date()}")
         log_event("step_completed", "Data refresh completed.", run_id=run_id, latest_price_date=str(latest_date.date()))
 
     print_step(2, "Pre-run data gate (staleness is an ERROR on the paper path)")
-    gate = paper_data_gate(as_of=args.as_of)
+    gate = paper_data_gate(as_of=args.as_of, data_paths=data_paths)
     try:
         enforce_data_gate(paths, gate)
     except PaperRunBlocked as exc:
         return blocked(run_id, "Pre-run data gate", str(exc))
-    print(f"   ok: data checks {gate['status']} as of {gate['as_of']}")
+    print(f"   ok: data checks {gate['status']} as of {gate['as_of']} ({gate['calendar']} calendar, {gate['data_dir']}/)")
     results.append(StepResult("Pre-run data gate", True, gate["status"]))
 
-    local_prices = load_price_data()
+    local_prices = load_price_data(data_paths.price_data)
     price_date = local_prices.dropna(how="all").index.max()
     print_step(3, "Idempotency check")
     try:
@@ -255,8 +254,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     print(f"   ok: {action} for signal date {price_date.date()}")
 
-    run_step(results, 4, "Feature generation", generate_features)
-    signals = run_step(results, 5, "Signal generation", lambda: generate_live_signals(prices=local_prices))
+    run_step(results, 4, "Feature generation", lambda: generate_features(data_paths))
+    signals = run_step(
+        results, 5, "Signal generation",
+        lambda: generate_live_signals(prices=local_prices, dataset_path=data_paths.ml_dataset),
+    )
     print(f"   generated signals: {len(signals)} rows")
 
     signal_warnings = run_step(results, 6, "Portfolio constraint and signal safety checks", validate_signal_file)
@@ -264,12 +266,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"   warning: {warning}")
 
     signal_date = pd.to_datetime(signals["date"]).max()
-    latest_prices, latest_price_date = load_latest_prices()
+    latest_prices, latest_price_date = load_latest_prices(data_paths.price_data)
     print_step(7, "Simulated broker execution (idempotent, snapshotted, reconciled)")
     try:
         outcome = run_paper_day(
             signal_date,
-            run_daily_simulation,
+            lambda: run_daily_simulation(price_path=data_paths.price_data, volume_path=data_paths.volume_data),
             paths=paths,
             prices=latest_prices,
             price_date=latest_price_date,

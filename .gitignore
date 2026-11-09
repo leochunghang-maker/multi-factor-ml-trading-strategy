@@ -24,6 +24,8 @@ reports/*.png
 
 # Generated model binaries and local datasets
 *.pkl
+# Paper-trading data dir (refreshed daily; never the research snapshot)
+data/paper/
 data/*.csv
 !data/universe_sp500_membership.csv
 !data/universe_membership_source.json

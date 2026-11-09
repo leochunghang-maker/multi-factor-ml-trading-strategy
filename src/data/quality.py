@@ -28,6 +28,7 @@ SPLIT_FACTORS = (1.5, 2.0, 3.0, 4.0, 5.0, 8.0, 10.0, 20.0)
 
 DEFAULT_DATA_CHECKS: dict[str, Any] = {
     "max_stale_trading_days": 5,
+    "calendar": "NYSE",
     "stale_severity": "WARNING",
     "max_end_date_gap_trading_days": 0,
     "max_missing_aligned_dates": 0,
@@ -91,13 +92,15 @@ def load_dated_csv(path: str | Path) -> pd.DataFrame | None:
     return frame
 
 
-def trading_days_between(start, end) -> int:
-    """Weekdays strictly after ``start`` up to and including ``end`` (holidays not excluded)."""
-    start = pd.Timestamp(start).date()
-    end = pd.Timestamp(end).date()
-    if end <= start:
-        return 0
-    return int(np.busday_count(start + pd.Timedelta(days=1), end + pd.Timedelta(days=1)))
+def trading_days_between(start, end, calendar: str = "NYSE") -> int:
+    """Trading days strictly after ``start`` up to and including ``end``.
+
+    ``calendar="NYSE"`` skips weekends and NYSE holidays (src/data/market_calendar.py);
+    ``"weekdays"`` counts every weekday (the pre-2026-11 behaviour).
+    """
+    from src.data.market_calendar import trading_days_between as _between
+
+    return _between(start, end, calendar)
 
 
 # -------------------------------------------------------------------- freshness
@@ -114,13 +117,14 @@ def check_freshness(
     max_stale = int(settings["max_stale_trading_days"])
     stale_sev = str(settings["stale_severity"])
     mis_sev = str(settings["misalignment_severity"])
+    cal = str(settings.get("calendar", "NYSE"))
     as_of = pd.Timestamp(as_of).normalize()
     for name, frame in frames.items():
         if frame is None or frame.empty:
             findings.append(DataFinding("ERROR", "freshness", name, "file missing or empty"))
             continue
         last = frame.index.max()
-        age = trading_days_between(last, as_of)
+        age = trading_days_between(last, as_of, cal)
         if age > max_stale:
             findings.append(DataFinding(
                 stale_sev, "freshness", name,
@@ -134,8 +138,8 @@ def check_freshness(
         if name == reference or frame is None or frame.empty:
             continue
         idx = pd.DatetimeIndex(frame.index)
-        end_gap = trading_days_between(min(idx.max(), ref_index.max()), max(idx.max(), ref_index.max()))
-        start_gap = trading_days_between(min(idx.min(), ref_index.min()), max(idx.min(), ref_index.min()))
+        end_gap = trading_days_between(min(idx.max(), ref_index.max()), max(idx.max(), ref_index.max()), cal)
+        start_gap = trading_days_between(min(idx.min(), ref_index.min()), max(idx.min(), ref_index.min()), cal)
         if end_gap > int(settings["max_end_date_gap_trading_days"]):
             findings.append(DataFinding(
                 mis_sev, "alignment", name,
@@ -358,11 +362,12 @@ def build_manifest(
     files: list[str],
     root: str | Path = ".",
     decisions: dict[str, str] | None = None,
+    description: str | None = None,
 ) -> dict[str, Any]:
     root = Path(root)
     entries = {f: describe_file(root / f) for f in files if (root / f).exists()}
     manifest = {
-        "description": "SHA-256 (CRLF→LF) and shape of checked-in data inputs. Regenerate only after "
+        "description": description or "SHA-256 (CRLF→LF) and shape of checked-in data inputs. Regenerate only after "
         "reviewing a re-download: python src/check_data.py --update-manifest",
         "updated": date.today().isoformat(),
         "files": entries,
@@ -426,12 +431,20 @@ def run_data_checks(
     as_of=None,
     config: dict[str, Any] | None = None,
     root: str | Path = ".",
+    data_paths=None,
 ) -> tuple[list[DataFinding], dict[str, Any]]:
-    """All freshness, alignment, quality and manifest checks. Returns findings + summary."""
+    """All freshness, alignment, quality and manifest checks. Returns findings + summary.
+
+    ``data_paths`` (a ``src.data.paths.DataPaths``) checks another data root, e.g.
+    the paper directory: its three dated inputs against its own manifest.
+    """
     settings = data_check_settings(config)
+    if data_paths is not None:
+        settings = paper_manifest_settings(settings, data_paths)
+    inputs = data_paths.dated_inputs() if data_paths is not None else DATED_INPUTS
     root = Path(root)
     as_of = pd.Timestamp(as_of or date.today()).normalize()
-    frames = {name: load_dated_csv(root / path) for name, path in DATED_INPUTS.items()}
+    frames = {name: load_dated_csv(root / path) for name, path in inputs.items()}
     findings: list[DataFinding] = []
     findings += check_freshness(frames, as_of, settings)
     findings += check_panel_quality(frames["price_data"], "price_data", settings, kind="price")
@@ -441,6 +454,8 @@ def run_data_checks(
     findings += check_manifest(settings["manifest_path"], list(settings["manifest_files"]), settings, root=root)
     summary = {
         "as_of": str(as_of.date()),
+        "calendar": str(settings.get("calendar", "NYSE")),
+        "data_dir": str(data_paths.root) if data_paths is not None else "data",
         "files": {
             name: (
                 {"rows": int(len(f)), "columns": int(f.shape[1]),
@@ -452,6 +467,18 @@ def run_data_checks(
         "counts": {s: sum(f.severity == s for f in findings) for s in SEVERITIES},
     }
     return findings, summary
+
+
+def paper_manifest_settings(settings: dict[str, Any], data_paths) -> dict[str, Any]:
+    """Settings with the manifest pointed at ``data_paths`` (only its dated inputs are hashed)."""
+    if getattr(data_paths, "kind", "research") == "research":
+        return settings
+    return {
+        **settings,
+        "manifest_path": data_paths.manifest,
+        "manifest_files": list(data_paths.dated_inputs().values()),
+        "report_path": data_paths.quality_report,
+    }
 
 
 def overall_status(findings: list[DataFinding]) -> str:

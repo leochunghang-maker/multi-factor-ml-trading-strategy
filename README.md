@@ -137,7 +137,7 @@ pip install -r requirements.txt
 Run the data pipeline:
 
 ```bash
-python src/data_loader.py            # prices + data/volume_data.csv
+python src/data_loader.py            # research snapshot: prices + data/volume_data.csv (to END_DATE)
 # python src/data_loader.py --volume-only  # refresh volume without touching prices
 python src/factors.py
 python src/ml_dataset.py
@@ -228,7 +228,9 @@ paper trading, and dashboard review. They do not enable live-money trading.
 | `make test` | Run the automated test suite with `pytest -q`. |
 | `make smoke` | Run the lightweight end-to-end smoke test runner. |
 | `make signals` | Generate the latest local paper-trading signal file. |
-| `make paper` | Run the local simulated paper-trading workflow with data refresh skipped. |
+| `make paper` | Run the local simulated paper-trading workflow with data refresh skipped (uses `data/paper/`). |
+| `make paper-data` | Refresh the paper data dir `data/paper/` (prices, volume, SPY through today); never touches `data/`. |
+| `make paper-data-check` | Data checks on `data/paper/` against its own manifest. |
 | `make dashboard` | Start the Streamlit dashboard. |
 | `make report` | Regenerate research and risk summary reports. |
 | `make health` | Run the operational health check (includes the data checks below). |
@@ -243,8 +245,22 @@ data gate, rebuilds features, generates signals, applies safety checks, routes o
 simulated broker, snapshots and reconciles the result, appends the journal, updates risk reports,
 and refreshes dashboard inputs. Nothing is sent to any real broker.
 
-Run the daily workflow (full refresh of price, volume and SPY through today with
-`src/data_loader.py`, then the paper day):
+Paper and research data are separate directories:
+
+| Directory | Used by | Written by |
+|---|---|---|
+| `data/` (checked in) | `make research`, multi-day simulation, reports, doc-metric checks | only an explicit `python src/data_loader.py` without `--paper` (research re-download) |
+| `data/paper/` (gitignored) | the daily paper workflow: gate, features, ML dataset, signals, simulated fills | `python src/data_loader.py --paper` / the daily runner's refresh |
+
+The paper dir is `paper_trading.data_dir` in `config/platform_config.json`, overridable with
+`$PAPER_DATA_DIR` or `--data-dir`; it is refused if it resolves to `data/`. Each paper refresh
+writes `data/paper/data_manifest.json` (SHA-256 of the three dated inputs), so the gate's manifest
+check catches a paper file edited after the refresh, and every run's `run.json` records the files
+and dates the gate saw. The risk-report step still summarises the research backtest from `data/`
+(read-only).
+
+Run the daily workflow (full refresh of price, volume and SPY through today into `data/paper/`
+with `src/data_loader.py`, then the paper day):
 
 ```bash
 python scripts/run_daily_paper_trading.py
@@ -275,8 +291,8 @@ manual review notes.
 End-to-end paper day after refreshing data with the loader:
 
 ```bash
-python src/data_loader.py --end today --with-benchmark   # prices + volume + SPY through today
-python src/check_data.py                                  # review; manifest WARNINGs are expected
+python src/data_loader.py --paper                         # data/paper/: prices + volume + SPY through today
+python src/check_data.py --paper                          # paper checks (staleness WARNING here, ERROR in the gate)
 python scripts/run_daily_paper_trading.py --skip-data-refresh
 cat results/paper/journal.md
 python scripts/run_daily_paper_trading.py --skip-data-refresh   # rerun: "already completed ... skipping"
@@ -284,10 +300,11 @@ python scripts/run_daily_paper_trading.py --skip-data-refresh --force   # replac
 make health
 ```
 
-The refresh rewrites the checked-in research snapshot under `data/` (the manifest check will
-flag it and research numbers would change). Do not commit refreshed data with research changes;
-restore the snapshot with `git checkout -- data/` before running `make research`. On the stale
-checked-in snapshot the gate blocks; `--as-of 2026-10-30` runs a demo paper day on it instead.
+`git status` stays clean: the refresh, features and ML dataset all go to `data/paper/`, so
+`make research` keeps reading the checked-in snapshot without any restore step. Offline demo:
+`python src/data_loader.py --paper --seed-from-research` copies the checked-in inputs into
+`data/paper/`; their last date is 2026-10-30, so add `--as-of 2026-10-30` to the paper run (the
+gate blocks otherwise).
 
 Run a multi-day operating-loop simulation:
 
@@ -779,11 +796,17 @@ python src/operations/health.py
 `config/platform_config.json` → `data_checks`. The same findings appear in `make health` and as a
 smoke-test line (FAIL on any ERROR, WARNING otherwise).
 
-- **Freshness:** last date more than `max_stale_trading_days = 5` weekdays before today (or
-  `--as-of`) → `stale_severity` (WARNING by default, because the checked-in data is a research
+- **Freshness:** last date more than `max_stale_trading_days = 5` NYSE trading days before today
+  (or `--as-of`) → `stale_severity` (WARNING by default, because the checked-in data is a research
   snapshot). The daily paper runner uses `paper_stale_severity` (ERROR) instead and blocks on any
-  data ERROR. Exchange holidays are not excluded, so the
-  count can overstate staleness by a holiday.
+  data ERROR. Trading days come from `data_checks.calendar = "NYSE"`
+  (`src/data/market_calendar.py`): weekends, the ten regular NYSE holidays with NYSE observance
+  rules (e.g. Thanksgiving, Good Friday, Juneteenth from 2022) and a checked-in list of one-off
+  closures (e.g. 2018-12-05, 2025-01-09) are not counted; early closes count as trading days.
+  No new dependency; a test checks that the calendar reproduces every date in the checked-in
+  price history (2018-01-02 → 2026-10-30). `"weekdays"` restores plain weekday counting.
+  `python src/check_data.py --paper` runs the same checks on `data/paper/` against its own
+  manifest.
 - **Alignment (ERROR):** volume and benchmark start/end dates and their date sets must match
   `price_data.csv` exactly (`max_end_date_gap_trading_days = 0`, `max_missing_aligned_dates = 0`).
 - **Quality:** unparseable / duplicate / unsorted dates and non-positive prices or negative

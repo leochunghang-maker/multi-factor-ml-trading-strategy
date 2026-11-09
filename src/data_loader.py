@@ -4,21 +4,20 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import json
+import shutil
 from datetime import datetime, timezone
 
 import pandas as pd
 import yfinance as yf
 
 from src.config import (
-    BENCHMARK_PRICES_PATH,
-    BENCHMARK_SOURCE_PATH,
     BENCHMARK_SYMBOL,
     END_DATE,
-    PRICE_DATA_PATH,
     START_DATE,
     TICKERS,
     VOLUME_DATA_PATH,
 )
+from src.data.paths import DataPaths
 from src.data.universe import drop_empty_price_columns
 
 
@@ -64,45 +63,54 @@ def _excluded_symbols() -> dict[str, str]:
     return dict(data_check_settings().get("excluded_symbols") or {})
 
 
-def download_price_data(include_volume: bool = True, end: str = END_DATE):
-    Path("data").mkdir(exist_ok=True)
+def _paths(paths: DataPaths | None) -> DataPaths:
+    return paths or DataPaths.research()
+
+
+def download_price_data(include_volume: bool = True, end: str = END_DATE, paths: DataPaths | None = None):
+    """Download prices (and volume) into ``paths`` (default: the research ``data/`` snapshot)."""
+    paths = _paths(paths)
+    Path(paths.price_data).parent.mkdir(parents=True, exist_ok=True)
     from src.data.quality import blank_excluded_symbols
 
-    print(f"Downloading price data ({START_DATE} to {end}, end exclusive)...")
+    print(f"Downloading price data ({START_DATE} to {end}, end exclusive) into {paths.root}/ ...")
     data = _download(end=end)
     excluded = _excluded_symbols()
     # Excluded symbols (recorded decisions, e.g. BK) stay all-NaN so a refresh
     # never changes the universe; other empty columns are dropped as before.
     prices = drop_empty_price_columns(data["Close"].drop(columns=list(excluded), errors="ignore"))
     prices = blank_excluded_symbols(prices, excluded)
-    prices.to_csv(PRICE_DATA_PATH)
-    print(f"Saved price data to {PRICE_DATA_PATH}")
+    prices.to_csv(paths.price_data)
+    print(f"Saved price data to {paths.price_data}")
     print(prices.tail())
 
     if include_volume:
-        save_volume_data(data, excluded=excluded)
+        save_volume_data(data, path=paths.volume_data, excluded=excluded)
 
 
-def download_volume_data(end: str = END_DATE):
+def download_volume_data(end: str = END_DATE, paths: DataPaths | None = None):
     """Download only share volume, leaving the existing price panel untouched."""
-    return save_volume_data(_download(end=end))
+    return save_volume_data(_download(end=end), path=_paths(paths).volume_data)
 
 
-def download_benchmark_data(symbol: str = BENCHMARK_SYMBOL, end: str = END_DATE) -> pd.DataFrame:
-    """Download the benchmark's adjusted close into ``data/benchmark_prices.csv``.
+def download_benchmark_data(
+    symbol: str = BENCHMARK_SYMBOL, end: str = END_DATE, paths: DataPaths | None = None
+) -> pd.DataFrame:
+    """Download the benchmark's adjusted close into ``<data dir>/benchmark_prices.csv``.
 
     Uses the same yfinance call (auto_adjust=True, START_DATE..END_DATE) as the
     equity panel and records provenance next to it, so benchmark-relative tests
     are reproducible offline from checked-in data.
     """
+    paths = _paths(paths)
     data = _download(tickers=[symbol], end=end)
     close = data["Close"]
     if isinstance(close, pd.Series):
         close = close.to_frame(name=symbol)
     close = close.reindex(columns=[symbol]).dropna(how="all")
     close.index.name = "Date"
-    Path(BENCHMARK_PRICES_PATH).parent.mkdir(parents=True, exist_ok=True)
-    close.to_csv(BENCHMARK_PRICES_PATH)
+    Path(paths.benchmark_prices).parent.mkdir(parents=True, exist_ok=True)
+    close.to_csv(paths.benchmark_prices)
     source = {
         "symbol": symbol,
         "source": "Yahoo Finance via yfinance.download(auto_adjust=True)",
@@ -116,23 +124,65 @@ def download_benchmark_data(symbol: str = BENCHMARK_SYMBOL, end: str = END_DATE)
         "note": "Total-return-style adjusted close (dividends/splits). Yahoo may revise "
                 "adjusted history; re-download changes values slightly.",
     }
-    Path(BENCHMARK_SOURCE_PATH).write_text(json.dumps(source, indent=2) + "\n")
-    print(f"Saved benchmark prices to {BENCHMARK_PRICES_PATH}")
+    Path(paths.benchmark_source).write_text(json.dumps(source, indent=2) + "\n")
+    print(f"Saved benchmark prices to {paths.benchmark_prices}")
     return close
 
 
-def report_changes_vs_manifest() -> None:
-    """After a download, flag files whose content differs from data/data_manifest.json.
+def write_data_manifest(paths: DataPaths, note: str) -> dict:
+    """Record SHA-256/shape of a non-research data dir's dated inputs (paper provenance)."""
+    from src.data.quality import build_manifest, data_check_settings
 
-    Read-only: the manifest is only updated by ``python src/check_data.py --update-manifest``
-    after the new data has been reviewed.
+    if paths.kind == "research":
+        raise ValueError("the research manifest is only updated by `python src/check_data.py --update-manifest`")
+    manifest = build_manifest(
+        list(paths.dated_inputs().values()),
+        decisions=data_check_settings().get("excluded_symbols") or None,
+        description=f"Paper data provenance ({note}); rewritten after every paper refresh.",
+    )
+    Path(paths.manifest).parent.mkdir(parents=True, exist_ok=True)
+    Path(paths.manifest).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    print(f"Wrote {paths.manifest} ({len(manifest['files'])} files)")
+    return manifest
+
+
+def refresh_paper_data(end: str | None = "today", paths: DataPaths | None = None) -> DataPaths:
+    """Full aligned refresh (prices, volume, SPY) into the paper dir; never touches data/."""
+    paths = paths or DataPaths.paper()
+    end = resolve_end_date(end)
+    download_price_data(end=end, paths=paths)
+    download_benchmark_data(end=end, paths=paths)
+    write_data_manifest(paths, f"yfinance download, end exclusive {end}")
+    return paths
+
+
+def seed_paper_data_from_research(paths: DataPaths | None = None) -> DataPaths:
+    """Copy the checked-in research inputs into the paper dir (offline demo; data/ is only read)."""
+    paths = paths or DataPaths.paper()
+    research = DataPaths.research()
+    Path(paths.root).mkdir(parents=True, exist_ok=True)
+    for name in ("price_data", "volume_data", "benchmark_prices", "benchmark_source"):
+        src, dst = getattr(research, name), getattr(paths, name)
+        if Path(src).exists():
+            shutil.copyfile(src, dst)
+            print(f"Copied {src} -> {dst}")
+    write_data_manifest(paths, "seeded from the checked-in research snapshot")
+    return paths
+
+
+def report_changes_vs_manifest(paths: DataPaths | None = None) -> None:
+    """After a download, flag files whose content differs from the data manifest.
+
+    Read-only for the research manifest, which is only updated by
+    ``python src/check_data.py --update-manifest`` after the new data has been reviewed.
     """
-    from src.data.quality import check_manifest, data_check_settings
+    from src.data.quality import check_manifest, data_check_settings, paper_manifest_settings
 
-    settings = data_check_settings()
+    paths = _paths(paths)
+    settings = paper_manifest_settings(data_check_settings(), paths)
     findings = check_manifest(settings["manifest_path"], list(settings["manifest_files"]), settings)
     if not findings:
-        print("Data manifest: downloaded files match the recorded hashes.")
+        print(f"Data manifest ({settings['manifest_path']}): files match the recorded hashes.")
         return
     for finding in findings:
         print(f"{finding.severity} {finding.check} {finding.file}: {finding.message}")
@@ -151,20 +201,43 @@ def resolve_end_date(value: str | None) -> str:
 def parse_args(argv=None):
     import argparse
 
-    parser = argparse.ArgumentParser(description="Download prices, volume and the SPY benchmark (Yahoo).")
+    parser = argparse.ArgumentParser(
+        description="Download prices, volume and the SPY benchmark (Yahoo). Without --paper this "
+                    "rewrites the checked-in research snapshot under data/."
+    )
+    parser.add_argument("--paper", action="store_true",
+                        help="Write to the paper data dir (data/paper/ or $PAPER_DATA_DIR) instead of "
+                             "data/; always refreshes prices, volume and SPY together (default --end today).")
+    parser.add_argument("--paper-dir", default=None, help="Paper data dir override (implies --paper).")
+    parser.add_argument("--seed-from-research", action="store_true",
+                        help="With --paper: copy the checked-in research inputs instead of downloading "
+                             "(offline demo).")
     parser.add_argument("--benchmark-only", action="store_true", help="Only data/benchmark_prices.csv.")
     parser.add_argument("--volume-only", action="store_true", help="Only data/volume_data.csv.")
     parser.add_argument("--with-benchmark", action="store_true",
                         help="Also refresh the benchmark (keeps price/volume/SPY date ranges aligned).")
     parser.add_argument("--end", default=None,
-                        help=f"End date, exclusive (default {END_DATE}; 'today' for a paper refresh). "
-                             "Changing it changes the research data snapshot.")
+                        help=f"End date, exclusive (research default {END_DATE}; paper default 'today'). "
+                             "Without --paper, changing it changes the research data snapshot.")
     return parser.parse_args(argv)
 
 
-if __name__ == "__main__":
-    args = parse_args()
+def main(argv=None) -> int:
+    args = parse_args(argv)
+    if args.paper or args.paper_dir:
+        paths = DataPaths.paper(args.paper_dir)
+        if args.seed_from_research:
+            seed_paper_data_from_research(paths)
+        else:
+            refresh_paper_data(end=args.end or "today", paths=paths)
+        print(f"Paper data ready in {paths.root}/ (research data/ untouched).")
+        return 0
+    if args.seed_from_research:
+        raise SystemExit("--seed-from-research requires --paper")
     end = resolve_end_date(args.end)
+    if args.end is not None:
+        print(f"NOTE: writing the research snapshot under data/ with end {end}. "
+              "For paper trading use --paper instead.")
     if args.benchmark_only:
         download_benchmark_data(end=end)
     elif args.volume_only:
@@ -174,3 +247,8 @@ if __name__ == "__main__":
         if args.with_benchmark:
             download_benchmark_data(end=end)
     report_changes_vs_manifest()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
