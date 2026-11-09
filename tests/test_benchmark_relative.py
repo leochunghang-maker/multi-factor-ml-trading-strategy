@@ -141,6 +141,13 @@ def test_trial_log_parsing_counts_and_validation(tmp_path) -> None:
     )
     with pytest.raises(ValueError):
         load_trial_log(dup)
+    zero = tmp_path / "zero.csv"
+    zero.write_text(
+        "trial_id,date,commit,family,description,trial_increment,reported_sharpe\n"
+        "1,2026-01-01,abc,wf,a,1,0.5\n2,2026-01-02,abc,wf,a rerun,0,0.5\n"
+    )
+    with pytest.raises(ValueError, match="increment 0"):
+        load_trial_log(zero)
     missing = tmp_path / "missing.csv"
     missing.write_text("trial_id,date,family\n1,2026-01-01,wf\n")
     with pytest.raises(ValueError):

@@ -30,6 +30,8 @@ inflated. The log keeps `N` honest and auditable in git.
 - `description`: the variant, specific enough to reproduce.
 - `trial_increment`: how many trials the row adds to `N`. Usually `1`.
 - `reported_sharpe`: the annualized Sharpe once observed. Leave it empty if none was observed.
+  Leave it empty on increment-0 rows too: they are not new observations, so a Sharpe there
+  would add a duplicate to V[SR]. Put any re-observed value in `notes`.
 - `notes`: say `Logged before running` when the row was pre-logged, plus anything else a reviewer
   needs.
 
@@ -89,7 +91,7 @@ log = load_trial_log(p); print(int(log.trial_increment.sum()), '+', k, '=', coun
 
 2. Commit the row with the code change, then run the variant (for example `make research`, or
    `python scripts/run_research_pipeline.py --from multi-factor`).
-3. Fill in `reported_sharpe` and replace `pending` with the commit hash.
+3. Fill in `reported_sharpe` (notes only on increment-0 rows) and replace `pending` with the commit hash.
 4. A row with a non-zero increment changes `N`, which changes every DSR. Regenerate the
    significance report (`python src/run_significance_report.py --cached-walk-forward`, or the
    `significance` step of `make research`). Then refresh the quoted numbers with

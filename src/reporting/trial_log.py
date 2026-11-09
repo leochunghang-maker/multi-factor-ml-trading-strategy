@@ -39,6 +39,11 @@ def load_trial_log(path: str | Path) -> pd.DataFrame:
         raise ValueError("trial_increment must be an integer")
     frame["trial_increment"] = increments.astype(int)
     frame["reported_sharpe"] = pd.to_numeric(frame["reported_sharpe"], errors="coerce")
+    # An increment-0 row (regenerated artifact, engineering fix) is not a new
+    # observation, so it must not add a Sharpe to V[SR]; record any re-observed
+    # value in notes instead.
+    if frame.loc[frame["trial_increment"] == 0, "reported_sharpe"].notna().any():
+        raise ValueError("reported_sharpe must be empty on trial_increment 0 rows (put the value in notes)")
     frame["date"] = pd.to_datetime(frame["date"], errors="raise")
     frame["family"] = frame["family"].astype(str).str.strip()
     return frame
