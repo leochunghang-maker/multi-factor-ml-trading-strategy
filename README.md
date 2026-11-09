@@ -310,6 +310,31 @@ outer-test result would be test-set selection.
 charged from the same point-in-time HTB tier panel as the outer book (ADV$ + volatility proxy
 from data on/before each inner date, plus static overrides), instead of the flat GC rate.
 
+**Beta-neutral long/short construction (design fixed a priori, before any backtest; trial log
+rows 41–42).** The benchmark-relative tests showed the walk-forward L/S book carried β ≈ 0.5
+despite being dollar-neutral. Research L/S books (walk-forward ML, multi-factor, and the nested
+inner scorer) therefore balance *beta* rather than dollars by default
+(`research.beta_neutral: true`):
+
+- **Benchmark: SPY** (`data/benchmark_prices.csv`). It is investable (the natural hedge), a
+  standard market proxy, and independent of our survivorship-biased ticker list; the
+  equal-weight universe would contain each stock itself and inherit the universe bias.
+- **Per-name beta:** OLS slope of daily returns on SPY over the trailing
+  `beta_lookback_days = 252` trading days ending at the rebalance date's close (data available
+  at that date only), requiring `beta_min_obs = 126`; names with too little history get β = 1.
+  Betas are **Blume-shrunk** toward 1: `β = 2/3·β_raw + 1/3` (`beta_shrinkage = 1/3`), the
+  classic adjustment for mean reversion and estimation noise in betas.
+- **Leg scaling:** with long gross L, short gross S and leg betas B_L = Σ w_i β_i (longs),
+  B_S = Σ |w_j| β_j (shorts), scale the long leg by `a` and the short leg by `b` so
+  `a·B_L = b·B_S` while `a·L + b·S` keeps the book's gross. The long/short gross ratio is
+  bounded to `[1/beta_neutral_max_leg_ratio, beta_neutral_max_leg_ratio]` with ratio 2.0; if
+  the bound binds, the residual beta is accepted and reported.
+- **Constraint interaction:** leg scaling and the sector net caps are applied alternately
+  (up to 5 rounds) so both hold approximately; vol targeting then scales the whole book
+  uniformly (beta stays ≈ 0); turnover and name-level borrow are charged on the final weights;
+  eligibility/ADV filters are upstream and unchanged.
+- Momentum-only and the long-only paper/sim paths are unchanged.
+
 Forward returns are used only as labels or realized outcomes. They are not used to form live
 signals.
 
@@ -354,54 +379,66 @@ complete production risk system.
 Headline multi-factor metrics below are recomputed from the committed artifact
 `results/multi_factor_results.csv` (`portfolio_return` column) using the project's
 `calculate_performance_metrics` helper, with the PIT eligibility filter, **HTB borrow tiers**,
-**sector-neutral construction**, and **EWMA volatility targeting**
-(`research.vol_estimator=ewma`, target 15% ann. vol, half-life 3 periods, scale clipped to
+**sector-neutral construction**, **beta-neutral legs** (SPY, see design above), and **EWMA
+volatility targeting** (`research.vol_estimator=ewma`, target 15% ann. vol, half-life 3 periods, scale clipped to
 [0.5, 1.5]; `realized` remains available). Sample window:
 **2019-01-31 → 2026-09-30** (93 month-end observations). Ending wealth in
-`results/multi_factor_equity_curve.csv` is **1.3882**, matching **38.82%** cumulative return.
+`results/multi_factor_equity_curve.csv` is **1.2729**, matching **27.29%** cumulative return.
 Regenerating with `make report` writes the same family of numbers to local
 `results/reports/summary_report.md` / `.csv` (gitignored).
 
 | Metric | Value from `results/multi_factor_results.csv` |
 |---|---:|
-| Annual return | 6.43% |
-| Annual volatility | 20.88% |
-| Sharpe ratio | 0.31 |
-| Max drawdown | -42.40% |
-| Cumulative return | 38.82% |
-| Average one-way turnover | 119.63% |
-| Mean vol scale | 0.87 |
+| Annual return | 4.98% |
+| Annual volatility | 19.33% |
+| Sharpe ratio | 0.26 |
+| Max drawdown | -41.04% |
+| Cumulative return | 27.29% |
+| Average one-way turnover (rebalance log, after first) | 124.09% |
+| Mean vol scale | 0.89 |
+
+Beta-neutral legs made the multi-factor result **worse** (dollar-neutral: 6.43% / 20.88% vol /
+Sharpe 0.31 / -42.40% / +38.82%). Ex-ante SPY beta is ≈ 0 on 92 of 93 rebalances (the 2:1 leg
+ratio bound bound once), but the **realized** beta stays ≈ -0.2 (SPY) / -0.3 (EW): this book's
+negative market exposure is dynamic (momentum/reversal loadings), not captured by trailing
+252-day betas.
 
 These are research outputs from the current committed backtest series, not forward-looking
 claims. Interpret them with the limitations below (residual survivorship bias, static sector map,
 simplified transaction costs, idealized execution).
 
-### Walk-forward ML (regenerated 2026-11-09, one-SE nested selection + inner HTB borrow)
+### Walk-forward ML (regenerated 2026-11-09, beta-neutral legs + one-SE nested selection)
 
 From `results/walk_forward_metrics.csv`, regenerated with month-end rebalancing, purge/embargo,
 research L/S gross 2.0 (base, before vol scale), PIT eligibility, HTB tiers, sector neutrality,
-**EWMA vol targeting**, and nested `cost_aware_sharpe` (inner books consistent with the outer
-book, name-level HTB borrow) under the pre-declared **`one_se_fallback`** rule (see
-"Selection rule" above). Distinct from paper `MAX_GROSS_EXPOSURE=1.0`.
-Sample: **2022-01-31 → 2026-09-30** (57 periods). Mean research vol scale ≈ **1.04**.
+**beta-neutral legs** (SPY; the nested inner scorer uses the same construction), **EWMA vol
+targeting**, and nested `cost_aware_sharpe` under the pre-declared **`one_se_fallback`** rule
+(see "Selection rule" above). Distinct from paper `MAX_GROSS_EXPOSURE=1.0`.
+Sample: **2022-01-31 → 2026-09-30** (57 periods). Mean research vol scale ≈ **1.15**.
 
-| Metric | Walk-forward ML |
-|---|---:|
-| Annual return | 11.62% |
-| Annual volatility | 16.29% |
-| Sharpe ratio | 0.71 |
-| Max drawdown | -20.08% |
-| Cumulative return | 62.96% |
+| Metric | Walk-forward ML (beta-neutral) | Before (dollar-neutral, 147723c) |
+|---|---:|---:|
+| Annual return | 5.97% | 11.62% |
+| Annual volatility | 13.98% | 16.29% |
+| Sharpe ratio | 0.43 | 0.71 |
+| Max drawdown | -15.94% | -20.08% |
+| Cumulative return | 26.84% | 62.96% |
+| Realized beta vs SPY (HAC regression) | 0.14 | 0.54 |
 
-**Every outer year fell back to `rf_default`.** The inner argmax was `ridge_1` (2022–2025) or
-`rf_shallow` (2026), but its paired monthly net-return advantage over `rf_default` was always
-below one standard error (t ≈ 0.12–0.87; see `paired_mean_diff` / `paired_se` in
-`results/reports/nested_model_selection.csv`). In other words, the inner folds contain no
-evidence that any candidate beats the default, and the walk-forward result is effectively the
-fixed production RF.
+Beta-neutral legs cut realized SPY beta from 0.54 to 0.14 (ex-ante beta ≈ 0 at every
+rebalance) and lowered volatility and drawdown, but **halved the return and Sharpe**: much of the
+dollar-neutral book's performance was market exposure in a rising market, as the
+benchmark-relative tests had suggested. **Every outer year still chose `rf_default`** (fallback
+in 2022, 2023, 2025; `rf_default` was the inner-best in 2024 and 2026). The
+`paired_mean_diff` / `paired_se` columns in `results/reports/nested_model_selection.csv` show the
+challenger was always well within one standard error.
 
 Honest caveats:
-- The improvement versus the previous argmax snapshot (0.63% / Sharpe 0.04 / -22.46% /
+- The design was fixed and logged (trial log rows 41–42) before running; we keep it as the
+  default even though Sharpe fell, because switching back on the basis of these outer-test
+  numbers would be test-set selection, and market-neutral alpha is the research question.
+- Pre-beta-neutral history for this section: the improvement of the one-SE rule versus the
+  previous argmax snapshot (0.63% / Sharpe 0.04 / -22.46% /
   -4.18%) comes from **not switching models on noise**, not from new predictive signal.
 - `rf_default` is itself a researcher choice made after earlier iterations on this same
   history, so the one-SE anchor inherits that research-iteration bias.
@@ -409,7 +446,7 @@ Honest caveats:
   -22.46% / -4.18% (identical with or without inner HTB borrow — name-level borrow shifts inner
   scores by ~0.01 but does not change any argmax); `ensemble_equal` gives 12.45% / 17.69% vol /
   Sharpe 0.70 / -17.20% / +67.75%.
-- Sharpe ≈ 0.7 over 57 months has a wide confidence interval (roughly ±0.9 at 95%), and the
+- A 57-month Sharpe has a wide confidence interval (roughly ±0.85 at 95%), and the
   survivorship, static-sector and simplified-cost limitations below still apply.
 
 ### How much could be luck? (significance, regenerated 2026-11-09)
@@ -435,27 +472,31 @@ README/report snapshots. **Rule: append the row before running a new variant or 
 `commit=pending` until it is committed), then fill in `reported_sharpe` if one is observed.
 Never delete rows for variants that "didn't work".
 
-`n_trials = Σ trial_increment + significance.trial_padding` = **40 logged + 14 padding = 54**.
-The 40 rows: 17 walk-forward ML variants (two whose Sharpe was seen but not recorded), 8
+`n_trials = Σ trial_increment + significance.trial_padding` = **42 logged + 14 padding = 56**.
+The 42 rows: 18 walk-forward ML variants (two whose Sharpe was seen but not recorded), 9
 multi-factor, 1 momentum-only, 4 ML baseline models, 3 nested candidates, 5 multi-day sim
-variants, and 2 benchmark-relative tests (this change, logged before it was run). The fixed
+variants, and 2 benchmark-relative tests; the beta-neutral rows (41–42) were logged before
+running. The fixed
 padding of 14 covers unrecorded pre-2026-11 iterations and never-swept researcher choices
 (long/short counts, lookbacks, target vol, half-lives, thresholds). This is probably still an
 undercount, so `significance_report.csv` also gives DSR at N = 15, 50, 100 and 200.
 
 **V[SR]** is the sample variance of each family's logged `reported_sharpe` values: stdev of
-annualized Sharpe ≈ 0.26 (walk-forward), 0.31 (multi-factor), 0.05 (multi-day sim; the sim
+annualized Sharpe ≈ 0.26 (walk-forward), 0.29 (multi-factor), 0.05 (multi-day sim; the sim
 variants are near-duplicates, so this understates the search). `deflated_sharpe_ratio_pooled_var`
-repeats DSR with the variance pooled over all 29 logged Sharpes (stdev ≈ 0.29) as a more
+repeats DSR with the variance pooled over all 31 logged Sharpes (stdev ≈ 0.29) as a more
 conservative check. The trials are not independent; the standard DSR treatment as independent
 errs toward a larger SR0.
 
-| Series (N = 54) | T | Sharpe | 95% block-bootstrap CI | P(boot SR ≤ 0) | PSR(0) | SR0 | DSR | DSR (pooled V) |
+| Series (N = 56) | T | Sharpe | 95% block-bootstrap CI | P(boot SR ≤ 0) | PSR(0) | SR0 | DSR | DSR (pooled V) |
 |---|---:|---:|---|---:|---:|---:|---:|---:|
-| Walk-forward ML (monthly, 2022-01 → 2026-09) | 57 | 0.71 | [-0.21, 1.74] | 6.3% | 0.94 | 0.61 | **0.59** | 0.54 |
-| Multi-factor L/S (monthly, 2019-01 → 2026-09) | 93 | 0.31 | [-0.35, 1.01] | 17.6% | 0.80 | 0.71 | **0.13** | 0.16 |
+| Walk-forward ML, beta-neutral (monthly, 2022-01 → 2026-09) | 57 | 0.43 | [-0.44, 1.27] | 15.8% | 0.82 | 0.59 | **0.36** | 0.30 |
+| Multi-factor L/S, beta-neutral (monthly, 2019-01 → 2026-09) | 93 | 0.26 | [-0.37, 0.90] | 20.3% | 0.76 | 0.68 | **0.12** | 0.13 |
 | Multi-day paper sim, long-only (daily, 2019-01-03 → 2026-10-30) | 1968 | 0.88 | [0.32, 1.50] | 0.1% | 0.99 | 0.11 | 0.98 | **0.72** |
 | Reference: daily-rebalanced equal-weight universe (same window) | 1968 | 1.08 | [0.41, 1.86] | 0.1% | 1.00 | — | — | — |
+
+Before beta-neutral legs (e433b15, N = 54): walk-forward 0.71 / DSR 0.59; multi-factor 0.31 /
+DSR 0.13.
 
 (The equal-weight reference is rebalanced daily to equal weights over the names with a price
 that day; an earlier version of this README called it "buy-and-hold", which was inaccurate.)
@@ -473,29 +514,32 @@ indexed at the entry date (same convention as the research P&L).
 Per series: OLS `r_s = a + b·r_b` with **Newey–West HAC** standard errors (Bartlett kernel,
 lags = floor(4·(T/100)^(2/9)) → 3 monthly / 7 daily; cross-checked against `statsmodels`),
 annualized alpha `a × periods/year`, **information ratio** (annualized Sharpe of `r_s − r_b`)
-with the same block bootstrap, PSR and DSR (N = 54, pooled V[SR] because no IR history
+with the same block bootstrap, PSR and DSR (N = 56, pooled V[SR] because no IR history
 exists), and a **beta-hedged** Sharpe: in-sample (full-sample beta, look-ahead, descriptive)
 and **causal** (`r_s − β_{t−1}·r_b`, β from the trailing 36 months / 252 days only), also
 deflated.
 
 | Series | Benchmark | α (ann.) | α t (HAC) | β | IR | IR 95% CI | IR DSR | Hedged SR (in-sample) | Hedged SR (causal) | Causal hedged DSR |
 |---|---|---:|---:|---:|---:|---|---:|---:|---:|---:|
-| Walk-forward ML | EW universe | 3.7% | 0.53 | 0.49 | -0.29 | [-1.10, 0.53] | 0.02 | 0.25 | 0.11 | 0.16 |
-| Walk-forward ML | SPY | 4.4% | 0.63 | 0.54 | -0.12 | [-0.98, 0.72] | 0.04 | 0.31 | 0.19 | 0.19 |
-| Multi-factor L/S | EW universe | 12.4% | 1.92 | -0.31 | -0.44 | [-0.95, 0.09] | 0.00 | 0.61 | 0.52 | 0.35 |
-| Multi-factor L/S | SPY | 9.5% | 1.52 | -0.19 | -0.34 | [-0.86, 0.19] | 0.00 | 0.46 | 0.42 | 0.27 |
+| Walk-forward ML (β-neutral) | EW universe | 5.0% | 0.79 | 0.06 | -0.52 | [-1.22, 0.13] | 0.01 | 0.36 | 0.43 | 0.34 |
+| Walk-forward ML (β-neutral) | SPY | 4.1% | 0.65 | 0.14 | -0.39 | [-1.13, 0.28] | 0.01 | 0.30 | 0.40 | 0.32 |
+| Multi-factor L/S (β-neutral) | EW universe | 10.8% | 1.79 | -0.30 | -0.51 | [-1.02, 0.01] | 0.00 | 0.58 | 0.44 | 0.29 |
+| Multi-factor L/S (β-neutral) | SPY | 8.2% | 1.39 | -0.20 | -0.41 | [-0.95, 0.11] | 0.00 | 0.43 | 0.34 | 0.21 |
 | Multi-day sim (long-only) | EW universe | 2.3% | 0.49 | 0.81 | -0.10 | [-0.73, 0.52] | 0.02 | 0.15 | 0.20 | 0.10 |
 | Multi-day sim (long-only) | SPY | 4.2% | 0.91 | 0.85 | 0.11 | [-0.54, 0.72] | 0.06 | 0.29 | 0.37 | 0.21 |
+
+Before beta-neutral legs (e433b15) vs SPY: walk-forward α t 0.63, β 0.54, causal hedged SR 0.19
+(DSR 0.19); multi-factor α t 1.52, β -0.19, causal hedged SR 0.42 (DSR 0.27).
 
 Interpretation:
 - **No series has statistically significant alpha.** Every HAC alpha t-stat is below 1.96 even
   before any multiple-testing adjustment, and every deflated IR / hedged DSR is far below 0.95.
-- **Walk-forward ML** is not market-neutral in practice: dollar-neutral L/S but β ≈ 0.5 to the
-  market (longs carry more beta than shorts). About half of its 0.71 Sharpe is market exposure;
-  beta-hedged it falls to 0.11–0.31.
-- **Multi-factor L/S** has negative beta, so hedging *raises* its Sharpe (0.31 → ~0.5) and its
-  alpha t-stat (1.9 vs EW) is the strongest here — but still not significant once deflated
-  (DSR 0.27–0.35). Its IR versus a long-only benchmark mostly measures "short the market" and
+- **Walk-forward ML**: the dollar-neutral book had β ≈ 0.5; beta-neutral legs bring realized
+  β to 0.06–0.14 and the strategy's own Sharpe to 0.43 — about what the earlier hedged
+  estimates implied. Alpha t-stats are 0.65–0.79; nothing significant.
+- **Multi-factor L/S** keeps a realized β ≈ -0.2/-0.3 even with ex-ante beta ≈ 0 (time-varying
+  factor beta that trailing 252-day stock betas miss). Its alpha t-stat (1.4–1.8) is the
+  strongest here but not significant, and deflated hedged Sharpe is 0.21–0.29. Its IR versus a long-only benchmark mostly measures "short the market" and
   is not a meaningful skill test for an L/S book; use the alpha / hedged rows.
 - **Multi-day sim** (long-only, β ≈ 0.8–0.85) earns its Sharpe from equity beta. Versus SPY
   the IR is ≈ 0.1 with a CI spanning zero; versus the equal-weight universe it is negative.

@@ -264,6 +264,13 @@ NESTED_INNER_NAME_LEVEL_BORROW = bool(_RESEARCH.get("nested_inner_name_level_bor
 NESTED_SELECTION_REPORT_PATH = "results/reports/nested_model_selection.csv"
 SECTOR_NEUTRAL = bool(_RESEARCH.get("sector_neutral", True))
 MAX_SECTOR_NET_EXPOSURE = float(_RESEARCH.get("max_sector_net_exposure", 0.15))
+BETA_NEUTRAL = bool(_RESEARCH.get("beta_neutral", True))
+BETA_BENCHMARK = str(_RESEARCH.get("beta_benchmark", "SPY"))
+BETA_LOOKBACK_DAYS = int(_RESEARCH.get("beta_lookback_days", 252))
+BETA_MIN_OBS = int(_RESEARCH.get("beta_min_obs", 126))
+BETA_SHRINKAGE = float(_RESEARCH.get("beta_shrinkage", 1.0 / 3.0))
+BETA_NEUTRAL_MAX_LEG_RATIO = float(_RESEARCH.get("beta_neutral_max_leg_ratio", 2.0))
+BETA_NEUTRAL_MAX_ROUNDS = int(_RESEARCH.get("beta_neutral_max_rounds", 5))
 SECTOR_MAP_PATH = str(_RESEARCH.get("sector_map_path", "data/sector_map.csv"))
 
 SECTOR_MAP = {

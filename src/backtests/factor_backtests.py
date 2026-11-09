@@ -24,6 +24,7 @@ from src.portfolio import (
     build_multi_factor_long_short_returns,
 )
 from src.reporting.metrics import calculate_performance_metrics, equity_curve
+from src.risk.beta import research_beta_panel
 
 
 def run_momentum_backtest() -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
@@ -70,6 +71,7 @@ def run_multi_factor_backtest(
         gross_exposure=gross_exposure,
         eligibility=eligibility,
         borrow_bps_panel=borrow_panel,
+        beta_panel=research_beta_panel(prices),
     )
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)

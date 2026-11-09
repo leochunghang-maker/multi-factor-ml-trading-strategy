@@ -89,6 +89,7 @@ from src.portfolio.portfolio import (
     equal_weight_long_short_weights,
     transaction_cost_from_weight_change,
 )
+from src.risk.beta import betas_on_date
 from src.risk.volatility import scale_weights, volatility_target_scale
 
 SUPPORTED_INNER_SCORES = ("rank_ic", "icir", "cost_aware_sharpe")
@@ -261,6 +262,7 @@ def net_long_short_period_return(
     periods_per_year: float,
     vol_scale: float = 1.0,
     borrow_bps_by_symbol: pd.Series | None = None,
+    betas: pd.Series | None = None,
 ) -> tuple[float, pd.Series]:
     """One rebalance's net L/S return after turnover costs and financing.
 
@@ -281,6 +283,7 @@ def net_long_short_period_return(
         long_count=long_count,
         short_count=short_count,
         gross_exposure=gross_exposure,
+        betas=betas.reindex(aligned.index) if betas is not None else None,
     )
     weights = scale_weights(weights, vol_scale)
     long_idx = weights[weights > 0].index
@@ -322,6 +325,7 @@ def collect_inner_fold_diagnostics(
     periods_per_year: float = PERIODS_PER_YEAR,
     vol_targeting: bool | None = None,
     borrow_bps_panel: pd.DataFrame | None = None,
+    beta_panel: pd.DataFrame | None = None,
 ) -> dict[str, list[float]]:
     """Pool per-date ICs and cost-aware net L/S returns across inner folds.
 
@@ -385,6 +389,12 @@ def collect_inner_fold_diagnostics(
             )
             if name_borrow is not None:
                 name_borrow.index = name_borrow.index.astype(str)
+            # Causal betas as-of the inner date (same construction as the outer book).
+            inner_betas = (
+                betas_on_date(beta_panel, _date, pd.Index(group["ticker"].drop_duplicates()))
+                if beta_panel is not None and "ticker" in group.columns
+                else None
+            )
             if "ticker" in group.columns:
                 keyed = group.drop_duplicates("ticker").set_index("ticker")
             else:
@@ -414,6 +424,7 @@ def collect_inner_fold_diagnostics(
                 periods_per_year=periods_per_year,
                 vol_scale=vol_scale,
                 borrow_bps_by_symbol=name_borrow,
+                betas=inner_betas,
             )
             if np.isfinite(net):
                 net_returns.append(net)
@@ -466,6 +477,7 @@ def score_candidate_on_inner_folds(
     short_count: int = ML_SHORT_COUNT,
     vol_targeting: bool | None = None,
     borrow_bps_panel: pd.DataFrame | None = None,
+    beta_panel: pd.DataFrame | None = None,
 ) -> float:
     """Scalar inner score for one candidate (NaN if no usable diagnostics)."""
     diagnostics = collect_inner_fold_diagnostics(
@@ -482,6 +494,7 @@ def score_candidate_on_inner_folds(
         short_count=short_count,
         vol_targeting=vol_targeting,
         borrow_bps_panel=borrow_bps_panel,
+        beta_panel=beta_panel,
     )
     return summarize_inner_score(diagnostics, score_metric)
 
@@ -503,6 +516,7 @@ def select_model_nested(
     short_count: int = ML_SHORT_COUNT,
     vol_targeting: bool | None = None,
     borrow_bps_panel: pd.DataFrame | None = None,
+    beta_panel: pd.DataFrame | None = None,
     selection_rule: str | None = None,
     default_model: str | None = None,
     se_threshold: float | None = None,
@@ -537,6 +551,7 @@ def select_model_nested(
             short_count=short_count,
             vol_targeting=vol_targeting,
             borrow_bps_panel=borrow_bps_panel,
+            beta_panel=beta_panel,
         )
         score = summarize_inner_score(diagnostics, metric)
         per_date[candidate["name"]] = (
@@ -597,6 +612,7 @@ def select_model_nested(
         "paired_se": se_stats["paired_se"],
         "paired_n": se_stats["paired_n"],
         "inner_name_level_borrow": borrow_bps_panel is not None,
+        "inner_beta_neutral": beta_panel is not None,
         "outer_test_year": outer_test_year,
         "chosen_model": best_name,
         "selection_mode": selection_mode,

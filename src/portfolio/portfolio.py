@@ -6,13 +6,48 @@ from src.config import (
     ANNUAL_BORROW_BPS,
     ANNUAL_CASH_FINANCING_BPS,
     ANNUAL_SHORT_REBATE_BPS,
+    BETA_NEUTRAL,
+    BETA_NEUTRAL_MAX_LEG_RATIO,
+    BETA_NEUTRAL_MAX_ROUNDS,
     MAX_SECTOR_NET_EXPOSURE,
     PERIODS_PER_YEAR,
     SECTOR_MAP_PATH,
     SECTOR_NEUTRAL,
 )
 from src.execution.financing import financing_cost_from_weights
+from src.risk.beta import beta_neutralize_with_sector_caps, betas_on_date
 from src.risk.volatility import scale_weights, volatility_target_scale
+
+
+def _beta_neutral_weights(
+    weights: pd.Series,
+    betas: pd.Series | None,
+    *,
+    net_cap: float | None,
+    sector_map: dict[str, str] | None,
+    gross_exposure: float,
+    beta_neutral: bool | None = None,
+) -> pd.Series:
+    """Scale L/S legs to zero ex-ante beta, alternating with sector net caps."""
+    use = BETA_NEUTRAL if beta_neutral is None else bool(beta_neutral)
+    if not use or betas is None or weights.empty:
+        return weights
+    caps = None
+    if net_cap is not None and net_cap < float("inf"):
+        def caps(w: pd.Series) -> pd.Series:
+            return apply_sector_net_exposure_limits(
+                w,
+                max_sector_net_exposure=net_cap,
+                sector_map=sector_map,
+                target_gross_exposure=gross_exposure,
+            )
+    return beta_neutralize_with_sector_caps(
+        weights,
+        betas,
+        max_leg_ratio=BETA_NEUTRAL_MAX_LEG_RATIO,
+        apply_sector_caps=caps,
+        max_rounds=BETA_NEUTRAL_MAX_ROUNDS,
+    )
 
 
 def _borrow_bps_on_date(
@@ -217,6 +252,8 @@ def equal_weight_long_short_weights(
     sector_neutral: bool | None = None,
     max_sector_net_exposure: float | None = None,
     sector_map: dict[str, str] | None = None,
+    betas: pd.Series | None = None,
+    beta_neutral: bool | None = None,
 ) -> pd.Series:
     # gross_exposure splits evenly: gross 2.0 means 100% long and 100% short.
     # Optional sector neutralization demeans scores within sector before ranking;
@@ -241,6 +278,15 @@ def equal_weight_long_short_weights(
             sector_map=sectors,
             target_gross_exposure=gross_exposure,
         )
+    # Optional beta-neutral legs (betas must be causal, known at the rebalance date).
+    weights = _beta_neutral_weights(
+        weights,
+        betas,
+        net_cap=net_cap,
+        sector_map=sectors,
+        gross_exposure=gross_exposure,
+        beta_neutral=beta_neutral,
+    )
     return weights
 
 
@@ -398,6 +444,7 @@ def build_prediction_long_short_returns(
     annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS,
     periods_per_year: float = PERIODS_PER_YEAR,
     borrow_bps_panel: pd.DataFrame | None = None,
+    beta_panel: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Build long/short portfolio returns from cross-sectional predictions.
 
@@ -469,6 +516,15 @@ def build_prediction_long_short_returns(
                 max_sector_net_exposure=MAX_SECTOR_NET_EXPOSURE,
                 target_gross_exposure=gross_exposure,
             )
+        betas = betas_on_date(beta_panel, date, weights.index)
+        weights = _beta_neutral_weights(
+            weights,
+            betas,
+            net_cap=MAX_SECTOR_NET_EXPOSURE,
+            sector_map=None,
+            gross_exposure=gross_exposure,
+        )
+        ex_ante_beta = float((weights * betas).sum()) if betas is not None else float("nan")
         vol_scale = volatility_target_scale(past_portfolio_returns)
         weights = scale_weights(weights, vol_scale)
         aligned = monthly_data.set_index("ticker")[return_column].reindex(weights.index).fillna(0.0)
@@ -496,6 +552,7 @@ def build_prediction_long_short_returns(
             "financing_cost": financing_cost,
             "traded_gross_exposure": traded_gross_exposure,
             "vol_scale": vol_scale,
+            "ex_ante_beta": ex_ante_beta,
             "portfolio_return": portfolio_return,
         })
         previous_weights = weights
@@ -524,6 +581,7 @@ def build_multi_factor_long_short_returns(
     annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS,
     periods_per_year: float = PERIODS_PER_YEAR,
     borrow_bps_panel: pd.DataFrame | None = None,
+    beta_panel: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     portfolio_returns = []
     monthly_dates = month_end_trading_dates(momentum)
@@ -549,12 +607,15 @@ def build_multi_factor_long_short_returns(
             mr_z = (mr - mr.mean()) / mr.std()
             composite_score = mom_z - mr_z
 
+            betas = betas_on_date(beta_panel, date, composite_score.index)
             weights = equal_weight_long_short_weights(
                 composite_score,
                 long_count,
                 short_count,
                 gross_exposure=gross_exposure,
+                betas=betas,
             )
+            ex_ante_beta = float((weights * betas).sum()) if betas is not None else float("nan")
             vol_scale = volatility_target_scale(past_portfolio_returns)
             weights = scale_weights(weights, vol_scale)
             transaction_cost_amount, traded_gross_exposure = transaction_cost_from_weight_change(
@@ -581,6 +642,7 @@ def build_multi_factor_long_short_returns(
                 "financing_cost": financing_cost,
                 "traded_gross_exposure": traded_gross_exposure,
                 "vol_scale": vol_scale,
+                "ex_ante_beta": ex_ante_beta,
                 "portfolio_return": portfolio_return,
             })
             previous_weights = weights

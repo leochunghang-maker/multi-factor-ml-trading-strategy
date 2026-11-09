@@ -6,16 +6,18 @@ This project implements a modular quantitative equity research pipeline for a lo
 
 Headline multi-factor metrics in this checkout are taken from committed
 `results/multi_factor_results.csv` over **2019-01-31 → 2026-09-30** with PIT
-eligibility, HTB borrow tiers, sector-neutral construction, and **EWMA volatility
-targeting**: annual return **6.43%**, annual volatility **20.88%**, Sharpe ratio
-**0.31**, maximum drawdown **-42.40%**, and cumulative return **38.82%** (ending
-wealth **1.3882**). Walk-forward metrics in `results/walk_forward_metrics.csv`:
-annual return **11.62%**, Sharpe **0.71**, max drawdown **-20.08%**, cumulative
-**62.96%** over 57 periods, with the pre-declared one-SE nested selection rule (every outer
-year fell back to `rf_default`; no inner evidence that a challenger is better). Older narrative
+eligibility, HTB borrow tiers, sector-neutral construction, **beta-neutral legs** (SPY) and
+**EWMA volatility targeting**: annual return **4.98%**, annual volatility **19.33%**, Sharpe
+ratio **0.26**, maximum drawdown **-41.04%**, and cumulative return **27.29%** (ending wealth
+**1.2729**). Walk-forward metrics in `results/walk_forward_metrics.csv`: annual return
+**5.97%**, Sharpe **0.43**, max drawdown **-15.94%**, cumulative **26.84%** over 57 periods,
+with beta-neutral legs and the pre-declared one-SE nested rule (`rf_default` every year).
+Beta neutrality (design logged a priori) roughly halved both strategies' returns: much of the
+earlier dollar-neutral performance was market exposure. Older narrative
 snapshots (multi-factor Sharpe **1.16** / **0.39** / **0.23** / **0.26** / **0.30**, walk-forward
 **0.88** / **0.70** / **0.63** / **0.37** / realized-vol **0.62** / EWMA with unscaled inner
-scoring **0.62** / consistent-inner argmax **0.04**) are superseded.
+scoring **0.62** / consistent-inner argmax **0.04** / dollar-neutral one-SE **0.71**; multi-factor
+dollar-neutral EWMA **0.31**) are superseded.
 
 The results are research outputs from a prototype workflow and should be interpreted with realistic caveats: the base ticker list is still a modern S&P 100-style snapshot (residual survivorship), eligibility uses an S&P 500 membership proxy rather than official S&P 100 PIT constituents, prices come from Yahoo Finance, transaction costs are simplified, and execution assumptions are idealized. They are not investment promises or live-trading claims.
 
@@ -249,39 +251,54 @@ The machine learning model uses a small feature set and a simple target. Walk-fo
 Source of truth for the multi-factor backtest in this repository checkout:
 `results/multi_factor_results.csv` (`portfolio_return`), sample
 **2019-01-31 → 2026-09-30** (93 month-end rows). Ending wealth in
-`results/multi_factor_equity_curve.csv` is **1.3882**.
+`results/multi_factor_equity_curve.csv` is **1.2729** (beta-neutral legs; dollar-neutral was 1.3882).
 
 | Metric | Value from committed multi-factor results |
 |---|---:|
-| Annual Return | 6.43% |
-| Annual Volatility | 20.88% |
-| Sharpe Ratio | 0.31 |
-| Max Drawdown | -42.40% |
-| Cumulative Return | 38.82% |
-| Average One-Way Turnover | 119.63% |
-| Mean vol scale | 0.87 |
+| Annual Return | 4.98% |
+| Annual Volatility | 19.33% |
+| Sharpe Ratio | 0.26 |
+| Max Drawdown | -41.04% |
+| Cumulative Return | 27.29% |
+| Average One-Way Turnover (rebalance log, after first) | 124.09% |
+| Mean vol scale | 0.89 |
 
 `make report` regenerates the same family of numbers into local
 `results/reports/summary_report.md` / `.csv` (gitignored).
 
-### Walk-forward ML (regenerated 2026-11-09, one-SE nested selection + inner HTB borrow)
+### Walk-forward ML (regenerated 2026-11-09, beta-neutral legs + one-SE nested selection)
 
 From `results/walk_forward_metrics.csv`, with month-end rebalancing, purge/embargo, research
-L/S base gross 2.0, PIT eligibility, HTB tiers, sector neutrality, **EWMA vol targeting**, and
-nested `cost_aware_sharpe` (inner books consistent with the outer book, name-level HTB borrow)
-under `one_se_fallback`. Nested choices: 2022–2026=`rf_default` (fallback every year). Mean
-research vol scale ≈ 1.04.
-Sample: **2022-01-31 → 2026-09-30** (57 periods).
+L/S base gross 2.0, PIT eligibility, HTB tiers, sector neutrality, **beta-neutral legs** (SPY,
+trailing 252-day Blume-shrunk betas; same construction in the nested inner scorer), **EWMA vol
+targeting**, and nested `cost_aware_sharpe` under `one_se_fallback`. Nested choices:
+2022–2026=`rf_default` (fallback 2022/2023/2025; default was inner-best 2024/2026). Mean
+research vol scale ≈ 1.15. Sample: **2022-01-31 → 2026-09-30** (57 periods).
 
-| Metric | Walk-forward ML |
-|---|---:|
-| Annual return | 11.62% |
-| Annual volatility | 16.29% |
-| Sharpe ratio | 0.71 |
-| Max drawdown | -20.08% |
-| Cumulative return | 62.96% |
+| Metric | Beta-neutral | Dollar-neutral (147723c) |
+|---|---:|---:|
+| Annual return | 5.97% | 11.62% |
+| Annual volatility | 13.98% | 16.29% |
+| Sharpe ratio | 0.43 | 0.71 |
+| Max drawdown | -15.94% | -20.08% |
+| Cumulative return | 26.84% | 62.96% |
+| Realized β vs SPY | 0.14 | 0.54 |
 
-Superseded: consistent-inner argmax (2c6d681) 0.63% / 17.73% vol / Sharpe 0.04 / -22.46% /
+### Beta-Neutral Construction
+
+Design fixed a priori and logged (trial log rows 41–42) before running: per-name OLS beta vs
+SPY over the trailing 252 trading days ending at the rebalance date (≥126 obs, else 1),
+Blume-shrunk `2/3·β + 1/3`; long and short legs rescaled at fixed gross so long-leg beta equals
+short-leg beta, gross ratio bounded to [0.5, 2]; alternated with sector net caps (≤5 rounds);
+vol targeting scales the whole book afterwards. SPY was chosen over the equal-weight universe
+because it is investable and independent of the survivorship-biased ticker list. Ex-ante beta is
+≈ 0 at every walk-forward rebalance and 92/93 multi-factor rebalances. Realized beta falls to
+0.14 for walk-forward but stays ≈ -0.2 for multi-factor, whose market exposure is time-varying.
+Both strategies' returns fell; we keep the design as default rather than revert on outer-test
+results.
+
+Superseded: dollar-neutral one-SE (147723c) 11.62% / 16.29% vol / Sharpe 0.71 / -20.08% /
++62.96%; consistent-inner argmax (2c6d681) 0.63% / 17.73% vol / Sharpe 0.04 / -22.46% /
 -4.18%; unscaled inner scoring 10.17% / Sharpe 0.62 / -15.41% / +52.11%. Sensitivity only (not
 used to pick the default): `best` 0.63% / Sharpe 0.04 (same with flat inner borrow);
 `ensemble_equal` 12.45% / 17.69% vol / Sharpe 0.70 / -17.20% / +67.75%. The gain versus argmax
@@ -293,32 +310,32 @@ confidence interval (≈ ±0.9 at 95%).
 From `results/significance_report.csv` and `results/benchmark_relative_report.csv`
 (`src/run_significance_report.py`): stationary block bootstrap (5,000 resamples, seed 42, mean
 block 4 months / 13 days), Probabilistic Sharpe Ratio vs 0, and Deflated Sharpe Ratio with
-**N = 54 trials** read from `research/trial_log.csv` (40 logged variants + 14 documented
+**N = 56 trials** read from `research/trial_log.csv` (42 logged variants + 14 documented
 padding) and cross-trial Sharpe variance from each family's logged Sharpes.
 
-| Series | T | Sharpe | 95% CI | PSR(0) | SR0 | DSR (N=54) | DSR (N=200) |
+| Series | T | Sharpe | 95% CI | PSR(0) | SR0 | DSR (N=56) | DSR (N=200) |
 |---|---:|---:|---|---:|---:|---:|---:|
-| Walk-forward ML | 57 m | 0.71 | [-0.21, 1.74] | 0.94 | 0.61 | 0.59 | 0.49 |
-| Multi-factor L/S | 93 m | 0.31 | [-0.35, 1.01] | 0.80 | 0.71 | 0.13 | 0.07 |
+| Walk-forward ML (β-neutral) | 57 m | 0.43 | [-0.44, 1.27] | 0.82 | 0.59 | 0.36 | 0.27 |
+| Multi-factor L/S (β-neutral) | 93 m | 0.26 | [-0.37, 0.90] | 0.76 | 0.68 | 0.12 | 0.06 |
 | Multi-day sim (long-only) | 1968 d | 0.88 | [0.32, 1.50] | 0.99 | 0.11 | 0.98 (0.72 pooled V) | 0.98 (0.58 pooled V) |
 | Daily-rebalanced equal-weight universe (reference) | 1968 d | 1.08 | [0.41, 1.86] | 1.00 | — | — | — |
 
 Benchmark-relative (OLS with Newey–West HAC SEs; IR and causal beta-hedged Sharpe deflated with
-N = 54 and pooled V[SR]):
+N = 56 and pooled V[SR]):
 
 | Series | Benchmark | α (ann.) | α t | β | IR [95% CI] | Causal hedged SR | Hedged DSR |
 |---|---|---:|---:|---:|---|---:|---:|
-| Walk-forward ML | EW universe | 3.7% | 0.53 | 0.49 | -0.29 [-1.10, 0.53] | 0.11 | 0.16 |
-| Walk-forward ML | SPY | 4.4% | 0.63 | 0.54 | -0.12 [-0.98, 0.72] | 0.19 | 0.19 |
-| Multi-factor L/S | EW universe | 12.4% | 1.92 | -0.31 | -0.44 [-0.95, 0.09] | 0.52 | 0.35 |
-| Multi-factor L/S | SPY | 9.5% | 1.52 | -0.19 | -0.34 [-0.86, 0.19] | 0.42 | 0.27 |
+| Walk-forward ML (β-neutral) | EW universe | 5.0% | 0.79 | 0.06 | -0.52 [-1.22, 0.13] | 0.43 | 0.34 |
+| Walk-forward ML (β-neutral) | SPY | 4.1% | 0.65 | 0.14 | -0.39 [-1.13, 0.28] | 0.40 | 0.32 |
+| Multi-factor L/S (β-neutral) | EW universe | 10.8% | 1.79 | -0.30 | -0.51 [-1.02, 0.01] | 0.44 | 0.29 |
+| Multi-factor L/S (β-neutral) | SPY | 8.2% | 1.39 | -0.20 | -0.41 [-0.95, 0.11] | 0.34 | 0.21 |
 | Multi-day sim | EW universe | 2.3% | 0.49 | 0.81 | -0.10 [-0.73, 0.52] | 0.20 | 0.10 |
 | Multi-day sim | SPY | 4.2% | 0.91 | 0.85 | 0.11 [-0.54, 0.72] | 0.37 | 0.21 |
 
 No series shows statistically significant alpha: all HAC t-stats are below 1.96 before any
-multiple-testing adjustment and all deflated statistics are far below 0.95. The walk-forward
-L/S book carries β ≈ 0.5, so roughly half its Sharpe is market exposure; the multi-factor book
-has negative β and improves when hedged but remains insignificant after deflation; the
+multiple-testing adjustment and all deflated statistics are far below 0.95. Beta-neutral legs
+cut the walk-forward book's realized β from 0.54 to 0.14 (its Sharpe fell from 0.71 to 0.43);
+the multi-factor book keeps a realized β ≈ -0.2 and remains insignificant after deflation; the
 long-only simulation's Sharpe is equity beta (IR vs SPY ≈ 0.1). IR versus a long-only benchmark
 is not a meaningful skill test for the L/S books — use alpha and hedged Sharpe there.
 
@@ -369,9 +386,9 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 
 ## Key Findings
 
-- From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **6.43% annual return**, **0.31 Sharpe**, **-42.40% max drawdown**, and **38.82% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
-- Walk-forward ML with the one-SE nested rule shows **11.62% annual return**, **0.71 Sharpe**, **-20.08% max drawdown**, **62.96% cumulative** over 2022-01-31 → 2026-09-30 (57 periods). Inner folds found no candidate significantly better than `rf_default`, so this is effectively the fixed production RF; argmax selection on the same inner scores gave **0.63% / 0.04**. Prior unscaled-inner EWMA (**10.17% / 0.62**), realized-vol targeting (**10.02% / 0.62**), sector-neutral-only (**6.34% / 0.37**), and older HTB-only / **23.1% / 0.88** figures are superseded.
-- Significance: walk-forward ML Sharpe 0.71 has a 95% block-bootstrap CI of [-0.21, 1.74] and Deflated Sharpe Ratio **0.59** at N = 54 logged-plus-padded trials; multi-factor DSR is **0.13**. Versus SPY and an equal-weight universe no series has significant alpha (all HAC t < 1.96); the walk-forward book has β ≈ 0.5 and the long-only sim's Sharpe is market beta.
+- From regenerated `results/multi_factor_results.csv` (beta-neutral legs), the multi-factor series shows **4.98% annual return**, **0.26 Sharpe**, **-41.04% max drawdown**, and **27.29% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods); dollar-neutral was 6.43% / 0.31.
+- Walk-forward ML with beta-neutral legs and the one-SE nested rule shows **5.97% annual return**, **0.43 Sharpe**, **-15.94% max drawdown**, **26.84% cumulative** over 2022-01-31 → 2026-09-30 (57 periods), realized SPY β 0.14; the dollar-neutral version (11.62% / 0.71, β 0.54) owed much of its return to market exposure. Earlier argmax (0.63% / 0.04), unscaled-inner EWMA (10.17% / 0.62) and older figures are superseded.
+- Significance: beta-neutral walk-forward ML Sharpe 0.43 has a 95% block-bootstrap CI of [-0.44, 1.27] and Deflated Sharpe Ratio **0.36** at N = 56 logged-plus-padded trials; multi-factor DSR is **0.12**. No series has significant alpha vs SPY or the equal-weight universe (all HAC t < 1.96); the long-only sim's Sharpe is market beta.
 - The architecture now separates data, features, models, portfolio construction, backtests, risk, and reporting into reusable modules.
 - Risk analytics add review context by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
 - The research remains a prototype until official S&P 100 PIT constituents (not only an S&P 500 proxy), more realistic trading costs, borrow assumptions, and production-grade data are added.
@@ -386,5 +403,5 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 - Extend capacity analysis beyond the 5% ADV participation trade cap (e.g. multi-day
   participation schedules, venue-level liquidity, and AUM stress at institutional size).
 - Add robust experiment tracking for model versions, features, parameters, and validation windows.
-- Make the long/short books beta-neutral by construction (ex-ante beta-balanced legs) as a pre-registered trial in `research/trial_log.csv`, then re-run the benchmark-relative tests; widen the nested candidate menu only with purge/embargo and the one-SE rule.
+- Investigate the multi-factor book's residual negative realized beta (time-varying factor beta, e.g. shorter/EWMA beta windows or a beta-hedge overlay) as a pre-logged trial; widen the nested candidate menu only with purge/embargo and the one-SE rule.
 - Add production-quality data checks for stale prices, corporate actions, missing data, and symbol changes.

@@ -34,6 +34,7 @@ from src.models.validation import (
 from src.models.ml import train_random_forest
 from src.models.nested import default_nested_candidates, select_model_nested
 from src.execution.borrow_tiers import research_borrow_bps_panel
+from src.risk.beta import research_beta_panel
 from src.portfolio import (
     build_prediction_long_short_returns,
     month_end_holding_period_returns,
@@ -60,6 +61,7 @@ def run_prediction_backtest(
         gross_exposure=RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
         eligibility=eligibility,
         borrow_bps_panel=borrow_panel,
+        beta_panel=research_beta_panel(prices),
     )
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)
@@ -83,6 +85,9 @@ def run_walk_forward_ml_backtest(
         if use_nested and NESTED_INNER_NAME_LEVEL_BORROW
         else None
     )
+    # Causal month-end betas (trailing window up to each date); the same panel
+    # drives inner scoring and the outer book so construction is consistent.
+    beta_panel = research_beta_panel(load_price_data())
 
     splits = purged_embargo_year_splits(
         df["date"],
@@ -128,6 +133,7 @@ def run_walk_forward_ml_backtest(
                 outer_test_year=test_year,
                 score_metric=NESTED_INNER_SCORE,
                 borrow_bps_panel=inner_borrow_panel,
+                beta_panel=beta_panel,
             )
             print(
                 f"  nested choice for {test_year}: {meta['chosen_model']} "
@@ -148,6 +154,7 @@ def run_walk_forward_ml_backtest(
                 "paired_se": meta["paired_se"],
                 "paired_n": meta["paired_n"],
                 "inner_name_level_borrow": meta["inner_name_level_borrow"],
+                "inner_beta_neutral": meta["inner_beta_neutral"],
                 "n_train_rows": meta["n_train_rows"],
                 "train_start": meta["train_start"],
                 "train_end": meta["train_end"],
@@ -200,6 +207,7 @@ def run_walk_forward_ml_backtest(
         gross_exposure=RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
         eligibility=eligibility,
         borrow_bps_panel=borrow_panel,
+        beta_panel=beta_panel,
     )
     returns = results["portfolio_return"]
     return results, equity_curve(returns), calculate_performance_metrics(returns)
