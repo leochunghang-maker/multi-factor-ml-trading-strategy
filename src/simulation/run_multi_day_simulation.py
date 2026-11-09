@@ -251,6 +251,21 @@ def save_charts(nav: pd.DataFrame, turnover: pd.DataFrame, exposure: pd.DataFram
     plt.close()
 
 
+def _cagr(nav: pd.DataFrame) -> float:
+    values = nav["portfolio_value"].astype(float)
+    dates = pd.to_datetime(nav["date"])
+    years = (dates.iloc[-1] - dates.iloc[0]).days / 365.25
+    if years <= 0 or values.iloc[0] <= 0:
+        return float("nan")
+    return float((values.iloc[-1] / values.iloc[0]) ** (1.0 / years) - 1.0)
+
+
+def _daily_sharpe(nav: pd.DataFrame) -> float:
+    returns = nav["portfolio_value"].astype(float).pct_change().dropna()
+    std = returns.std()
+    return float(returns.mean() / std * np.sqrt(252)) if std > 0 else float("nan")
+
+
 def save_report(
     nav: pd.DataFrame,
     trades: pd.DataFrame,
@@ -300,6 +315,9 @@ def save_report(
         f"- Average daily turnover: {nav['turnover'].mean():.4f}",
         f"- Average gross exposure: {nav['gross_exposure'].mean():.2%}",
         f"- Return volatility: {returns.std() * np.sqrt(252):.2%}",
+        f"- CAGR (calendar days, full window incl. warm-up): {_cagr(nav):.2%}",
+        f"- Sharpe (daily, annualized, full window incl. warm-up): {_daily_sharpe(nav):.3f}",
+        f"- Max drawdown: {nav['drawdown'].min():.2%}",
         "",
         "## Warning Breakdown",
         "",

@@ -1,11 +1,19 @@
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from src.backtests.benchmark import load_benchmark_equity_curve
 from src.backtests.ml_backtests import run_walk_forward_ml_backtest
-from src.config import BENCHMARK_SYMBOL, TRANSACTION_COST, WALK_FORWARD_CHART_PATH
+from src.config import (
+    BENCHMARK_SYMBOL,
+    TRANSACTION_COST,
+    WALK_FORWARD_CHART_PATH,
+    WALK_FORWARD_METRICS_PATH,
+    WALK_FORWARD_PERIOD_RETURNS_PATH,
+)
 from src.reporting.charts import save_equity_curve, save_strategy_vs_benchmark
 
 
@@ -21,6 +29,16 @@ def main() -> None:
     print("Annual Volatility:", metrics["annual_volatility"])
     print("Sharpe Ratio:", metrics["sharpe_ratio"])
     print("Max Drawdown:", metrics["max_drawdown"])
+
+    # Committed artifacts read by the significance report and the README checks.
+    Path(WALK_FORWARD_PERIOD_RETURNS_PATH).parent.mkdir(parents=True, exist_ok=True)
+    results.to_csv(WALK_FORWARD_PERIOD_RETURNS_PATH)
+    metric_columns = ["annual_return", "annual_volatility", "sharpe_ratio", "max_drawdown"]
+    pd.DataFrame([{key: metrics[key] for key in metric_columns}]).to_csv(
+        WALK_FORWARD_METRICS_PATH, index=False
+    )
+    print(f"Period returns saved to {WALK_FORWARD_PERIOD_RETURNS_PATH}")
+    print(f"Metrics saved to {WALK_FORWARD_METRICS_PATH}")
 
     print()
     try:

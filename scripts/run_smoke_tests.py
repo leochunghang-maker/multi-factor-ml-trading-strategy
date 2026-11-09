@@ -146,6 +146,21 @@ class SmokeTestRunner:
         else:
             self.pass_("Data checks", detail)
 
+    def check_doc_metrics(self) -> None:
+        """Numbers quoted in README/report must match the committed result files."""
+        sys.path.insert(0, str(PROJECT_ROOT))
+        try:
+            from src.reporting.doc_metrics import check_documents
+
+            issues = check_documents(root=PROJECT_ROOT)
+        except Exception as exc:  # pragma: no cover - diagnostic path
+            self.fail("Doc metrics", f"could not run: {exc}")
+            return
+        if issues:
+            self.fail("Doc metrics", "; ".join(str(i) for i in issues[:5]) + " (python src/check_doc_metrics.py)")
+            return
+        self.pass_("Doc metrics", "quoted README/report numbers match the result files")
+
     def run_pytest_if_available(self) -> None:
         """Run pytest when installed; skip cleanly when unavailable."""
         pytest = shutil.which("pytest")
@@ -217,12 +232,15 @@ def main() -> int:
             PROJECT_ROOT / "src" / "simulation" / "run_multi_day_simulation.py",
             PROJECT_ROOT / "dashboard" / "app.py",
             PROJECT_ROOT / "src" / "check_data.py",
+            PROJECT_ROOT / "src" / "check_doc_metrics.py",
+            PROJECT_ROOT / "scripts" / "run_research_pipeline.py",
         ]
     )
     runner.check_latest_signals()
     runner.check_paths_exist("Reports folder", [PROJECT_ROOT / "reports"], "folders")
     runner.check_paths_exist("Dashboard app", [PROJECT_ROOT / "dashboard" / "app.py"], "files")
     runner.check_data_inputs()
+    runner.check_doc_metrics()
     runner.run_pytest_if_available()
     runner.print_summary()
     return runner.exit_code()

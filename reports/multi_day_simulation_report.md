@@ -33,6 +33,9 @@ This report simulates a local paper-trading operating loop. It does not connect 
 - Average daily turnover: 0.0502
 - Average gross exposure: 86.63%
 - Return volatility: 20.37%
+- CAGR (calendar days, full window incl. warm-up): 15.88%
+- Sharpe (daily, annualized, full window incl. warm-up): 0.827
+- Max drawdown: -27.01%
 
 ## Warning Breakdown
 

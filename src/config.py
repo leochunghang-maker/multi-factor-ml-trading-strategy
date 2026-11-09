@@ -418,3 +418,4 @@ SIGNIFICANCE_CAUSAL_BETA_WINDOW_DAILY = int(_SIGNIFICANCE.get("causal_beta_windo
 SIGNIFICANCE_REPORT_PATH = "results/significance_report.csv"
 BENCHMARK_RELATIVE_REPORT_PATH = "results/benchmark_relative_report.csv"
 WALK_FORWARD_PERIOD_RETURNS_PATH = "results/walk_forward_period_returns.csv"
+WALK_FORWARD_METRICS_PATH = "results/walk_forward_metrics.csv"

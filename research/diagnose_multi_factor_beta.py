@@ -137,7 +137,8 @@ def main() -> None:
         "realized_beta_long_leg_monthly": _ols_beta(diag["long_leg_return"], x),
         "realized_beta_short_leg_monthly": _ols_beta(diag["short_leg_return"], x),
         "realized_beta_book_unscaled_monthly": _ols_beta(diag["book_return_unscaled"], x),
-        "realized_beta_book_reported_monthly": _ols_beta(reported["portfolio_return"], x),
+        # The committed book (current estimator), not the OLS reconstruction above.
+        "realized_beta_committed_book_monthly": _ols_beta(reported["portfolio_return"], x),
         "realized_beta_unscaled_up_months": _ols_beta(diag.loc[x > 0, "book_return_unscaled"], x[x > 0]),
         "realized_beta_unscaled_down_months": _ols_beta(diag.loc[x <= 0, "book_return_unscaled"], x[x <= 0]),
         "corr_vol_scale_vs_spy_next": float(reported["vol_scale"].corr(x)),

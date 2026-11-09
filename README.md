@@ -143,7 +143,32 @@ python src/factors.py
 python src/ml_dataset.py
 ```
 
-Run research backtests and model validation:
+Regenerate every committed research artifact from the checked-in data, in dependency order
+(no download, no trading; about 2 minutes), and verify the numbers quoted in the docs:
+
+```bash
+make research                                    # = python scripts/run_research_pipeline.py
+python scripts/run_research_pipeline.py --list   # show the 14 steps and their outputs
+python scripts/run_research_pipeline.py --from significance
+```
+
+The steps are: data checks → factors → ML dataset → momentum IC → momentum backtest → ML
+baseline → ML backtest → multi-factor → risk-managed → walk-forward (nested) → multi-day sim →
+significance + benchmark-relative (using the walk-forward returns just written) → beta diagnosis
+→ doc-metric check. On an unchanged checkout the tracked CSVs come back identical (ML
+predictions can differ in the last floating-point digit); review `git diff --stat` after a run.
+
+**Quoted numbers are checked.** Current-result numbers in `README.md` and
+`reports/quant_research_report.md` are wrapped in invisible HTML-comment markers (an opening
+`m:KEY` comment before the value and a closing `/m` comment after it; format in
+`src/reporting/doc_metrics.py`). `python src/check_doc_metrics.py` recomputes every key from
+the committed result files (`--list` prints them) and fails on any mismatch, on unknown keys, or
+when a required headline metric is no longer marked in the README; `--fix` rewrites mismatched
+values. `tests/test_doc_metrics.py` runs the same check in CI. Historical "before" numbers are
+deliberately left unmarked. When editing results text, wrap new current-result numbers the
+same way.
+
+Or run research backtests and model validation step by step:
 
 ```bash
 python src/train_ml_model.py
@@ -207,6 +232,8 @@ paper trading, and dashboard review. They do not enable live-money trading.
 | `make dashboard` | Start the Streamlit dashboard. |
 | `make report` | Regenerate research and risk summary reports. |
 | `make health` | Run the operational health check (includes the data checks below). |
+| `make research` | Regenerate every committed research artifact in dependency order, then verify the numbers quoted in the docs. |
+| `make doc-metrics` | Only verify quoted numbers in `README.md` / `reports/quant_research_report.md` against the result files. |
 | `make data-check` | Data freshness, alignment, quality and manifest checks; writes `reports/data_quality_report.md`. |
 
 ## Paper Trading Workflow
@@ -408,25 +435,25 @@ Headline multi-factor metrics below are recomputed from the committed artifact
 see design above), and **EWMA
 volatility targeting** (`research.vol_estimator=ewma`, target 15% ann. vol, half-life 3 periods, scale clipped to
 [0.5, 1.5]; `realized` remains available). Sample window:
-**2019-01-31 → 2026-09-30** (93 month-end observations). Ending wealth in
-`results/multi_factor_equity_curve.csv` is **1.2529**, matching **25.29%** cumulative return.
+**2019-01-31 → 2026-09-30** (<!--m:mf.n-->93<!--/m--> month-end observations). Ending wealth in
+`results/multi_factor_equity_curve.csv` is **<!--m:mf.ending_wealth-->1.2529<!--/m-->**, matching **<!--m:mf.cumulative-->25.29%<!--/m-->** cumulative return.
 Regenerating with `make report` writes the same family of numbers to local
 `results/reports/summary_report.md` / `.csv` (gitignored).
 
 | Metric | Value from `results/multi_factor_results.csv` |
 |---|---:|
-| Annual return | 4.76% |
-| Annual volatility | 19.27% |
-| Sharpe ratio | 0.25 |
-| Max drawdown | -41.35% |
-| Cumulative return | 25.29% |
-| Average one-way turnover (rebalance log, after first) | 123.91% |
-| Mean vol scale | 0.89 |
+| Annual return | <!--m:mf.annual_return-->4.76%<!--/m--> |
+| Annual volatility | <!--m:mf.annual_volatility-->19.27%<!--/m--> |
+| Sharpe ratio | <!--m:mf.sharpe-->0.25<!--/m--> |
+| Max drawdown | <!--m:mf.max_drawdown-->-41.35%<!--/m--> |
+| Cumulative return | <!--m:mf.cumulative-->25.29%<!--/m--> |
+| Average one-way turnover (rebalance log, after first) | <!--m:mf.turnover_avg-->123.91%<!--/m--> |
+| Mean vol scale | <!--m:mf.vol_scale-->0.89<!--/m--> |
 
 History: dollar-neutral (e433b15) 6.43% / 20.88% vol / Sharpe 0.31 / -42.40% / +38.82%;
 beta-neutral with 252-day OLS betas (fe8b173) 4.98% / 19.33% / 0.26 / -41.04% / +27.29%.
-Ex-ante SPY beta is ≈ 0 on 91 of 93 rebalances (the 2:1 leg ratio bound binds twice), but the
-**realized** beta stays ≈ -0.19 (SPY) / -0.30 (EW) with either estimator. The diagnosis
+Ex-ante SPY beta is ≈ 0 on <!--m:mf.ex_ante_neutral_count-->91<!--/m--> of <!--m:mf.n-->93<!--/m--> rebalances (the 2:1 leg ratio bound binds twice), but the
+**realized** beta stays ≈ <!--m:rel.mf.spy.beta-->-0.19<!--/m--> (SPY) / <!--m:rel.mf.ew.beta-->-0.30<!--/m--> (EW) with either estimator. The diagnosis
 (`research/diagnose_multi_factor_beta.py`, written up in the report) points to a **horizon
 mismatch**, not beta drift: on daily data the held names' betas — even measured with look-ahead
 over the following year — net to ≈ +0.07, but on monthly returns the short leg (recent winners,
@@ -445,16 +472,16 @@ research L/S gross 2.0 (base, before vol scale), PIT eligibility, HTB tiers, sec
 **beta-neutral legs** (SPY, EWMA betas with 63-day half-life; the nested inner scorer uses the
 same panel), **EWMA vol targeting**, and nested `cost_aware_sharpe` under the pre-declared **`one_se_fallback`** rule
 (see "Selection rule" above). Distinct from paper `MAX_GROSS_EXPOSURE=1.0`.
-Sample: **2022-01-31 → 2026-09-30** (57 periods). Mean research vol scale ≈ **1.14**.
+Sample: **2022-01-31 → 2026-09-30** (<!--m:wf.n-->57<!--/m--> periods). Mean research vol scale ≈ **<!--m:wf.vol_scale-->1.14<!--/m-->**.
 
 | Metric | β-neutral, EWMA betas (current) | β-neutral, OLS betas (fe8b173) | Dollar-neutral (147723c) |
 |---|---:|---:|---:|
-| Annual return | 6.30% | 5.97% | 11.62% |
-| Annual volatility | 14.05% | 13.98% | 16.29% |
-| Sharpe ratio | 0.45 | 0.43 | 0.71 |
-| Max drawdown | -14.59% | -15.94% | -20.08% |
-| Cumulative return | 28.84% | 26.84% | 62.96% |
-| Realized beta vs SPY (HAC regression) | 0.11 | 0.14 | 0.54 |
+| Annual return | <!--m:wf.annual_return-->6.30%<!--/m--> | 5.97% | 11.62% |
+| Annual volatility | <!--m:wf.annual_volatility-->14.05%<!--/m--> | 13.98% | 16.29% |
+| Sharpe ratio | <!--m:wf.sharpe-->0.45<!--/m--> | 0.43 | 0.71 |
+| Max drawdown | <!--m:wf.max_drawdown-->-14.59%<!--/m--> | -15.94% | -20.08% |
+| Cumulative return | <!--m:wf.cumulative-->28.84%<!--/m--> | 26.84% | 62.96% |
+| Realized beta vs SPY (HAC regression) | <!--m:rel.wf.spy.beta-->0.11<!--/m--> | 0.14 | 0.54 |
 
 The EWMA estimator moved walk-forward numbers only slightly (Sharpe 0.43 → 0.45, realized SPY
 beta 0.14 → 0.11); differences this small are noise at T = 57. Beta-neutral legs (fe8b173) cut
@@ -505,7 +532,7 @@ README/report snapshots. **Rule: append the row before running a new variant or 
 `commit=pending` until it is committed), then fill in `reported_sharpe` if one is observed.
 Never delete rows for variants that "didn't work".
 
-`n_trials = Σ trial_increment + significance.trial_padding` = **43 logged + 14 padding = 57**.
+`n_trials = Σ trial_increment + significance.trial_padding` = **<!--m:trials.logged-->43<!--/m--> logged + <!--m:trials.padding-->14<!--/m--> padding = <!--m:trials.n-->57<!--/m-->**.
 The 43 rows: 18 walk-forward ML variants (two whose Sharpe was seen but not recorded), 10
 multi-factor, 1 momentum-only, 4 ML baseline models, 3 nested candidates, 5 multi-day sim
 variants, and 2 benchmark-relative tests; the beta-neutral rows (41–42) and the EWMA-beta row (43, one
@@ -516,18 +543,22 @@ padding of 14 covers unrecorded pre-2026-11 iterations and never-swept researche
 undercount, so `significance_report.csv` also gives DSR at N = 15, 50, 100 and 200.
 
 **V[SR]** is the sample variance of each family's logged `reported_sharpe` values: stdev of
-annualized Sharpe ≈ 0.26 (walk-forward), 0.28 (multi-factor), 0.05 (multi-day sim; the sim
+annualized Sharpe ≈ <!--m:trials.wf.sd-->0.26<!--/m--> (walk-forward), <!--m:trials.mf.sd-->0.28<!--/m--> (multi-factor), <!--m:trials.sim.sd-->0.05<!--/m--> (multi-day sim; the sim
 variants are near-duplicates, so this understates the search). `deflated_sharpe_ratio_pooled_var`
-repeats DSR with the variance pooled over all 32 logged Sharpes (stdev ≈ 0.29) as a more
+repeats DSR with the variance pooled over all <!--m:trials.pooled_count-->32<!--/m--> logged Sharpes (stdev ≈ <!--m:trials.pooled_sd-->0.29<!--/m-->) as a more
 conservative check. The trials are not independent; the standard DSR treatment as independent
 errs toward a larger SR0.
 
-| Series (N = 57) | T | Sharpe | 95% block-bootstrap CI | P(boot SR ≤ 0) | PSR(0) | SR0 | DSR | DSR (pooled V) |
+| Series (N = <!--m:trials.n-->57<!--/m-->) | T | Sharpe | 95% block-bootstrap CI | P(boot SR ≤ 0) | PSR(0) | SR0 | DSR | DSR (pooled V) |
 |---|---:|---:|---|---:|---:|---:|---:|---:|
-| Walk-forward ML, beta-neutral (monthly, 2022-01 → 2026-09) | 57 | 0.45 | [-0.41, 1.27] | 14.6% | 0.84 | 0.59 | **0.37** | 0.32 |
-| Multi-factor L/S, beta-neutral (monthly, 2019-01 → 2026-09) | 93 | 0.25 | [-0.38, 0.89] | 21.3% | 0.75 | 0.65 | **0.13** | 0.13 |
-| Multi-day paper sim, long-only (daily, 2019-01-03 → 2026-10-30) | 1968 | 0.88 | [0.32, 1.50] | 0.1% | 0.99 | 0.11 | 0.98 | **0.72** |
-| Reference: daily-rebalanced equal-weight universe (same window) | 1968 | 1.08 | [0.41, 1.86] | 0.1% | 1.00 | — | — | — |
+| Walk-forward ML, beta-neutral (monthly, 2022-01 → 2026-09) | <!--m:sig.wf.n_obs-->57<!--/m--> | <!--m:sig.wf.sharpe-->0.45<!--/m--> | <!--m:sig.wf.ci-->[-0.41, 1.27]<!--/m--> | <!--m:sig.wf.p_le_zero-->14.6%<!--/m--> | <!--m:sig.wf.psr-->0.84<!--/m--> | <!--m:sig.wf.sr0-->0.59<!--/m--> | **<!--m:sig.wf.dsr-->0.37<!--/m-->** | <!--m:sig.wf.dsr_pooled-->0.32<!--/m--> |
+| Multi-factor L/S, beta-neutral (monthly, 2019-01 → 2026-09) | <!--m:sig.mf.n_obs-->93<!--/m--> | <!--m:sig.mf.sharpe-->0.25<!--/m--> | <!--m:sig.mf.ci-->[-0.38, 0.89]<!--/m--> | <!--m:sig.mf.p_le_zero-->21.3%<!--/m--> | <!--m:sig.mf.psr-->0.75<!--/m--> | <!--m:sig.mf.sr0-->0.65<!--/m--> | **<!--m:sig.mf.dsr-->0.13<!--/m-->** | <!--m:sig.mf.dsr_pooled-->0.13<!--/m--> |
+| Multi-day paper sim, long-only (daily, 2019-01-03 → 2026-10-30) | <!--m:sig.sim.n_obs-->1968<!--/m--> | <!--m:sig.sim.sharpe-->0.88<!--/m--> | <!--m:sig.sim.ci-->[0.32, 1.50]<!--/m--> | <!--m:sig.sim.p_le_zero-->0.1%<!--/m--> | <!--m:sig.sim.psr-->0.99<!--/m--> | <!--m:sig.sim.sr0-->0.11<!--/m--> | <!--m:sig.sim.dsr-->0.98<!--/m--> | **<!--m:sig.sim.dsr_pooled-->0.72<!--/m-->** |
+| Reference: daily-rebalanced equal-weight universe (same window) | <!--m:sig.ref.n_obs-->1968<!--/m--> | <!--m:sig.ref.sharpe-->1.08<!--/m--> | <!--m:sig.ref.ci-->[0.41, 1.86]<!--/m--> | <!--m:sig.ref.p_le_zero-->0.1%<!--/m--> | <!--m:sig.ref.psr-->1.00<!--/m--> | — | — | — |
+
+The multi-day sim Sharpe here (from 2019-01-03, after the 2018 warm-up year in which the
+eligibility filter leaves the book in cash) differs from the simulation report's full-window
+daily Sharpe (<!--m:sim.sharpe-->0.827<!--/m-->, which includes the warm-up); both are computed from the same NAV.
 
 Before beta-neutral legs (e433b15, N = 54): walk-forward 0.71 / DSR 0.59; multi-factor 0.31 /
 DSR 0.13. Beta-neutral with OLS betas (fe8b173, N = 56): walk-forward 0.43 / DSR 0.36;
@@ -550,19 +581,19 @@ indexed at the entry date (same convention as the research P&L).
 Per series: OLS `r_s = a + b·r_b` with **Newey–West HAC** standard errors (Bartlett kernel,
 lags = floor(4·(T/100)^(2/9)) → 3 monthly / 7 daily; cross-checked against `statsmodels`),
 annualized alpha `a × periods/year`, **information ratio** (annualized Sharpe of `r_s − r_b`)
-with the same block bootstrap, PSR and DSR (N = 57, pooled V[SR] because no IR history
+with the same block bootstrap, PSR and DSR (N = <!--m:trials.n-->57<!--/m-->, pooled V[SR] because no IR history
 exists), and a **beta-hedged** Sharpe: in-sample (full-sample beta, look-ahead, descriptive)
 and **causal** (`r_s − β_{t−1}·r_b`, β from the trailing 36 months / 252 days only), also
 deflated.
 
 | Series | Benchmark | α (ann.) | α t (HAC) | β | IR | IR 95% CI | IR DSR | Hedged SR (in-sample) | Hedged SR (causal) | Causal hedged DSR |
 |---|---|---:|---:|---:|---:|---|---:|---:|---:|---:|
-| Walk-forward ML (β-neutral) | EW universe | 5.7% | 0.91 | 0.04 | -0.49 | [-1.21, 0.17] | 0.01 | 0.41 | 0.44 | 0.34 |
-| Walk-forward ML (β-neutral) | SPY | 4.8% | 0.76 | 0.11 | -0.37 | [-1.11, 0.32] | 0.01 | 0.34 | 0.40 | 0.32 |
-| Multi-factor L/S (β-neutral) | EW universe | 10.5% | 1.76 | -0.30 | -0.52 | [-1.03, 0.00] | 0.00 | 0.56 | 0.43 | 0.28 |
-| Multi-factor L/S (β-neutral) | SPY | 7.9% | 1.35 | -0.19 | -0.42 | [-0.95, 0.11] | 0.00 | 0.41 | 0.32 | 0.20 |
-| Multi-day sim (long-only) | EW universe | 2.3% | 0.49 | 0.81 | -0.10 | [-0.73, 0.52] | 0.02 | 0.15 | 0.20 | 0.10 |
-| Multi-day sim (long-only) | SPY | 4.2% | 0.91 | 0.85 | 0.11 | [-0.54, 0.72] | 0.06 | 0.29 | 0.37 | 0.21 |
+| Walk-forward ML (β-neutral) | EW universe | <!--m:rel.wf.ew.alpha-->5.7%<!--/m--> | <!--m:rel.wf.ew.alpha_t-->0.91<!--/m--> | <!--m:rel.wf.ew.beta-->0.04<!--/m--> | <!--m:rel.wf.ew.ir-->-0.49<!--/m--> | <!--m:rel.wf.ew.ir_ci-->[-1.21, 0.17]<!--/m--> | <!--m:rel.wf.ew.ir_dsr-->0.01<!--/m--> | <!--m:rel.wf.ew.hedged_is-->0.41<!--/m--> | <!--m:rel.wf.ew.hedged_causal-->0.44<!--/m--> | <!--m:rel.wf.ew.hedged_causal_dsr-->0.34<!--/m--> |
+| Walk-forward ML (β-neutral) | SPY | <!--m:rel.wf.spy.alpha-->4.8%<!--/m--> | <!--m:rel.wf.spy.alpha_t-->0.76<!--/m--> | <!--m:rel.wf.spy.beta-->0.11<!--/m--> | <!--m:rel.wf.spy.ir-->-0.37<!--/m--> | <!--m:rel.wf.spy.ir_ci-->[-1.11, 0.32]<!--/m--> | <!--m:rel.wf.spy.ir_dsr-->0.01<!--/m--> | <!--m:rel.wf.spy.hedged_is-->0.34<!--/m--> | <!--m:rel.wf.spy.hedged_causal-->0.40<!--/m--> | <!--m:rel.wf.spy.hedged_causal_dsr-->0.32<!--/m--> |
+| Multi-factor L/S (β-neutral) | EW universe | <!--m:rel.mf.ew.alpha-->10.5%<!--/m--> | <!--m:rel.mf.ew.alpha_t-->1.76<!--/m--> | <!--m:rel.mf.ew.beta-->-0.30<!--/m--> | <!--m:rel.mf.ew.ir-->-0.52<!--/m--> | <!--m:rel.mf.ew.ir_ci-->[-1.03, 0.00]<!--/m--> | <!--m:rel.mf.ew.ir_dsr-->0.00<!--/m--> | <!--m:rel.mf.ew.hedged_is-->0.56<!--/m--> | <!--m:rel.mf.ew.hedged_causal-->0.43<!--/m--> | <!--m:rel.mf.ew.hedged_causal_dsr-->0.28<!--/m--> |
+| Multi-factor L/S (β-neutral) | SPY | <!--m:rel.mf.spy.alpha-->7.9%<!--/m--> | <!--m:rel.mf.spy.alpha_t-->1.35<!--/m--> | <!--m:rel.mf.spy.beta-->-0.19<!--/m--> | <!--m:rel.mf.spy.ir-->-0.42<!--/m--> | <!--m:rel.mf.spy.ir_ci-->[-0.95, 0.11]<!--/m--> | <!--m:rel.mf.spy.ir_dsr-->0.00<!--/m--> | <!--m:rel.mf.spy.hedged_is-->0.41<!--/m--> | <!--m:rel.mf.spy.hedged_causal-->0.32<!--/m--> | <!--m:rel.mf.spy.hedged_causal_dsr-->0.20<!--/m--> |
+| Multi-day sim (long-only) | EW universe | <!--m:rel.sim.ew.alpha-->2.3%<!--/m--> | <!--m:rel.sim.ew.alpha_t-->0.49<!--/m--> | <!--m:rel.sim.ew.beta-->0.81<!--/m--> | <!--m:rel.sim.ew.ir-->-0.10<!--/m--> | <!--m:rel.sim.ew.ir_ci-->[-0.73, 0.52]<!--/m--> | <!--m:rel.sim.ew.ir_dsr-->0.02<!--/m--> | <!--m:rel.sim.ew.hedged_is-->0.15<!--/m--> | <!--m:rel.sim.ew.hedged_causal-->0.20<!--/m--> | <!--m:rel.sim.ew.hedged_causal_dsr-->0.10<!--/m--> |
+| Multi-day sim (long-only) | SPY | <!--m:rel.sim.spy.alpha-->4.2%<!--/m--> | <!--m:rel.sim.spy.alpha_t-->0.91<!--/m--> | <!--m:rel.sim.spy.beta-->0.85<!--/m--> | <!--m:rel.sim.spy.ir-->0.11<!--/m--> | <!--m:rel.sim.spy.ir_ci-->[-0.54, 0.72]<!--/m--> | <!--m:rel.sim.spy.ir_dsr-->0.06<!--/m--> | <!--m:rel.sim.spy.hedged_is-->0.29<!--/m--> | <!--m:rel.sim.spy.hedged_causal-->0.37<!--/m--> | <!--m:rel.sim.spy.hedged_causal_dsr-->0.21<!--/m--> |
 
 Before beta-neutral legs (e433b15) vs SPY: walk-forward α t 0.63, β 0.54, causal hedged SR 0.19
 (DSR 0.19); multi-factor α t 1.52, β -0.19, causal hedged SR 0.42 (DSR 0.27). With OLS
@@ -572,12 +603,12 @@ Interpretation:
 - **No series has statistically significant alpha.** Every HAC alpha t-stat is below 1.96 even
   before any multiple-testing adjustment, and every deflated IR / hedged DSR is far below 0.95.
 - **Walk-forward ML**: the dollar-neutral book had β ≈ 0.5; beta-neutral legs bring realized
-  β to 0.04–0.11 and the strategy's own Sharpe to 0.45 — about what the earlier hedged
-  estimates implied. Alpha t-stats are 0.76–0.91; nothing significant.
+  β to <!--m:rel.wf.ew.beta-->0.04<!--/m-->–<!--m:rel.wf.spy.beta-->0.11<!--/m--> and the strategy's own Sharpe to <!--m:wf.sharpe-->0.45<!--/m--> — about what the earlier hedged
+  estimates implied. Alpha t-stats are <!--m:rel.wf.spy.alpha_t-->0.76<!--/m-->–<!--m:rel.wf.ew.alpha_t-->0.91<!--/m-->; nothing significant.
 - **Multi-factor L/S** keeps a realized β ≈ -0.2/-0.3 even with ex-ante beta ≈ 0, with OLS or
   EWMA betas: daily-return betas understate the short leg's (recent winners') monthly market
   sensitivity (see the diagnosis in the report). Its alpha t-stat (1.4–1.8) is the
-  strongest here but not significant, and deflated hedged Sharpe is 0.21–0.29. Its IR versus a long-only benchmark mostly measures "short the market" and
+  strongest here but not significant, and deflated hedged Sharpe is <!--m:rel.mf.spy.hedged_causal_dsr-->0.20<!--/m-->–<!--m:rel.mf.ew.hedged_causal_dsr-->0.28<!--/m-->. Its IR versus a long-only benchmark mostly measures "short the market" and
   is not a meaningful skill test for an L/S book; use the alpha / hedged rows.
 - **Multi-day sim** (long-only, β ≈ 0.8–0.85) earns its Sharpe from equity beta. Versus SPY
   the IR is ≈ 0.1 with a CI spanning zero; versus the equal-weight universe it is negative.
@@ -608,9 +639,13 @@ From `reports/paper_trading_status.md` (latest run `2026-05-23T17:29:40+00:00`):
 | Trades filled | 0 |
 | Rejected orders | 0 |
 
-`reports/system_status.md` (generated `2026-05-23T17:29:44+00:00`) records overall status
-`WARNING` because recent execution history contains rejected order events. This is retained
-intentionally as operational memory rather than hidden.
+`reports/system_status.md` is rewritten by every multi-day simulation / `make research` /
+`make health` run. In this checkout it reports overall status **`ERROR`**: the local paper-trading
+artifacts it monitors (`results/live/latest_signals.csv`, `results/simulation/*` snapshots) are
+not committed, and the data checks warn that the price snapshot is stale and `BK` is empty. (An
+earlier version of this paragraph described a May 2026 `WARNING` snapshot caused by rejected
+orders; that snapshot had already been overwritten.) The paper-trading status table above is
+from the last daily paper run (May 2026) and is older than the research data.
 
 ## Screenshots / Outputs
 
@@ -763,9 +798,9 @@ daily moves of 25–38% (none split-like; not verified against news).
   + square-root impact `impact_coefficient_bps * sqrt(notional / 63-day ADV$)` (100 bps coefficient),
   all set in `config/platform_config.json` `execution`. Full-history monthly multi-day simulation
   with drawdown halt (skip rebalance at/below −10%) **and** PIT eligibility filter
-  (2018-01-02 → 2026-10-30, 2220 days, 1406 trades, 9 DRAWDOWN_HALT events; regenerated
-  2026-11-09 with vol targeting + ADV participation cap): final NAV **$367,063.49**, CAGR
-  **15.88%**, daily Sharpe **0.827**, MDD **−27.01%** at $100k scale (earlier PIT run without
+  (2018-01-02 → 2026-10-30, <!--m:sim.days-->2220<!--/m--> days, <!--m:sim.trades-->1406<!--/m--> trades, <!--m:sim.drawdown_halts-->9<!--/m--> DRAWDOWN_HALT events; regenerated
+  2026-11-09 with vol targeting + ADV participation cap): final NAV **$<!--m:sim.final_nav-->367,063.49<!--/m-->**, CAGR
+  **<!--m:sim.cagr-->15.88%<!--/m-->**, daily Sharpe **<!--m:sim.sharpe-->0.827<!--/m-->**, MDD **<!--m:sim.max_drawdown-->-27.01%<!--/m-->** at $100k scale (earlier PIT run without
   those: $366,120.57 / 15.84% / 0.819).
   Prior drawdown-halt-only run (no PIT filter) was final NAV $459,706.56 / CAGR 18.91% /
   Sharpe 0.928. Research backtests use a flat `transaction_cost`, the same eligibility filter, and monthly stock-borrow on short gross (`annual_borrow_bps=100`).
