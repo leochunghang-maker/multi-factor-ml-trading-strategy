@@ -458,3 +458,66 @@ def append_csv(path: str, rows: list[dict]) -> None:
         existing = pd.read_csv(output_path)
         frame = pd.concat([existing, frame], ignore_index=True)
     frame.to_csv(output_path, index=False)
+
+
+def execute_rebalance_orders(
+    broker: SimulatedBroker,
+    orders: list[SimulatedOrder],
+    prices: dict[str, float],
+    timestamp: str,
+    max_position_weight: float = MAX_PAPER_ALLOCATION,
+) -> dict:
+    """Execute one rebalance: all sells first, then buys sized from cash after sells.
+
+    Buys are scaled down pro rata (``SimulatedBroker.fit_buys_to_cash``) only
+    when the allocation and fill buffers already in the targets are not enough,
+    so cash never goes negative and a buy is not rejected merely because exits
+    had not filled yet. Invalid orders are still rejected and logged.
+    Shared by the daily paper run and the multi-day simulator.
+    """
+    trades: list[dict] = []
+    rejected: list[dict] = []
+    submitted: list[SimulatedOrder] = []
+    traded_notional = 0.0
+    order_adv_clips = 0
+
+    def execute(order: SimulatedOrder) -> None:
+        nonlocal traded_notional, order_adv_clips
+        submitted.append(order)
+        if broker.clip_order_to_adv_participation(order).quantity < order.quantity - 1e-12:
+            order_adv_clips += 1
+        try:
+            # Order execution updates cash and positions immediately in the
+            # simulated account. Invalid orders are rejected and logged.
+            trade = broker.process_order(
+                order, timestamp, prices=prices, max_position_weight=max_position_weight
+            )
+            trades.append(trade)
+            traded_notional += trade["notional"]
+        except ValueError as exc:
+            rejected.append({
+                "timestamp": timestamp,
+                "symbol": order.symbol,
+                "side": order.side,
+                "quantity": order.quantity,
+                "price": order.price,
+                "status": "REJECTED",
+                "message": str(exc),
+            })
+
+    for order in orders:
+        if order.side != "BUY":
+            execute(order)
+    cash_after_sells = broker.cash
+    buy_orders, buy_scale = broker.fit_buys_to_cash([order for order in orders if order.side == "BUY"])
+    for order in buy_orders:
+        execute(order)
+    return {
+        "trades": trades,
+        "rejected": rejected,
+        "submitted": submitted,
+        "traded_notional": traded_notional,
+        "order_adv_clips": order_adv_clips,
+        "buy_scale": buy_scale,
+        "cash_after_sells": cash_after_sells,
+    }

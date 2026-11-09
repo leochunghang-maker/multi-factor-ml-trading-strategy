@@ -108,3 +108,31 @@ def test_build_rebalance_orders_puts_exit_sells_before_buys() -> None:
     assert "BUY" in sides and "SELL" in sides
     assert sides == sorted(sides, key=lambda side: 0 if side == "SELL" else 1)
 
+
+
+def test_shared_helper_passes_max_position_weight() -> None:
+    # A 15% buy breaches the default 10% paper cap but fits a 20% cap.
+    prices = {"AAA": 100.0}
+    for cap, rejected in ((None, 1), (0.20, 0)):
+        broker = SimulatedBroker(cash=100_000.0)
+        kwargs = {} if cap is None else {"max_position_weight": cap}
+        result = execute_rebalance_orders(
+            broker, [SimulatedOrder("AAA", "BUY", 150.0, 100.0)], prices, "t", **kwargs)
+        assert len(result["rejected"]) == rejected
+
+
+def test_multi_day_simulator_uses_shared_sell_before_buy_helper() -> None:
+    from src.execution import simulated_broker
+    from src.simulation import run_multi_day_simulation as sim
+
+    assert sim.execute_rebalance_orders is simulated_broker.execute_rebalance_orders
+    # Fully invested book rotating into new names: the multi-day order builder
+    # plus the shared helper fill every order and keep cash non-negative.
+    broker, prices = _fully_invested_broker()
+    targets = pd.Series({f"OLD{i}": 0.095 for i in range(3, 10)} | {f"NEW{i}": 0.095 for i in range(3)})
+    nav = broker.portfolio_value(prices)
+    orders = sim.build_orders(broker, targets, prices, nav, "t")
+    result = execute_rebalance_orders(broker, orders, prices, "t", max_position_weight=0.10)
+    assert result["rejected"] == []
+    assert {t["symbol"] for t in result["trades"] if t["side"] == "BUY"} == {"NEW0", "NEW1", "NEW2"}
+    assert broker.cash >= 0.0

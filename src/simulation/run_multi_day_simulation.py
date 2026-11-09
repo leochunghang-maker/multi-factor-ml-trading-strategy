@@ -45,7 +45,7 @@ from src.config import (
 from src.data.universe import build_eligibility_mask, eligible_tickers_on_date
 from src.data.io import load_price_data
 from src.portfolio.constraints import average_daily_dollar_volume, load_optional_volume_data
-from src.execution.simulated_broker import SimulatedBroker, SimulatedOrder
+from src.execution.simulated_broker import SimulatedBroker, SimulatedOrder, execute_rebalance_orders
 from src.features.factors import calculate_factor_frames
 from src.operations.health import build_health_status, save_system_status_report
 from src.operations.structured_logging import log_event
@@ -185,8 +185,8 @@ def build_orders(
         )
 
     # Selling first releases cash and reduces legacy concentration before buys
-    # are evaluated. That is closer to an institutional rebalance workflow than
-    # submitting buys first and creating artificial cash rejections.
+    # are evaluated. execute_rebalance_orders enforces the same order and then
+    # sizes buys to cash after sells; the sort keeps the order list readable.
     return sorted(orders, key=lambda order: 0 if order.side == "SELL" else 1)
 
 
@@ -474,24 +474,35 @@ def run_simulation(settings: SimulationSettings, start: str | None = None, end: 
                         ),
                     })
                     orders = []
-                for order in orders:
-                    try:
-                        trade = broker.process_order(
-                            order,
-                            date.isoformat(),
-                            prices=price_dict,
-                            max_position_weight=settings.max_position_weight,
-                        )
-                        trade_rows.append(trade)
-                        traded_notional += trade["notional"]
-                        trades_filled += 1
-                    except ValueError as exc:
-                        rejected += 1
-                        warning_rows.append({
-                            "date": date,
-                            "type": "FAILED_EXECUTION",
-                            "message": f"{order.symbol} {order.side}: {exc}",
-                        })
+                # Same execution path as the daily paper run: every sell fills
+                # first, then buys are sized from cash after sells (scaled pro
+                # rata only if the buffers in the targets are not enough).
+                execution = execute_rebalance_orders(
+                    broker,
+                    orders,
+                    price_dict,
+                    date.isoformat(),
+                    max_position_weight=settings.max_position_weight,
+                )
+                trade_rows.extend(execution["trades"])
+                traded_notional += execution["traded_notional"]
+                trades_filled += len(execution["trades"])
+                rejected += len(execution["rejected"])
+                for row in execution["rejected"]:
+                    warning_rows.append({
+                        "date": date,
+                        "type": "FAILED_EXECUTION",
+                        "message": f"{row['symbol']} {row['side']}: {row['message']}",
+                    })
+                if execution["buy_scale"] < 1.0:
+                    warning_rows.append({
+                        "date": date,
+                        "type": "BUYS_SCALED_TO_CASH",
+                        "message": (
+                            f"Buys scaled by {execution['buy_scale']:.4f} to fit cash after sells "
+                            f"({execution['cash_after_sells']:.2f})."
+                        ),
+                    })
                 previous_rebalance_date = date
                 if allocation["expected_turnover"] > settings.max_turnover:
                     warning_rows.append({
