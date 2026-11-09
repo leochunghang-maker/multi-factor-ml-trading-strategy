@@ -8,6 +8,7 @@ RESULTS_DIR = PROJECT_ROOT / "results"
 REPORTS_DIR = RESULTS_DIR / "reports"
 SIMULATION_DIR = RESULTS_DIR / "simulation"
 LIVE_DIR = RESULTS_DIR / "live"
+PAPER_DIR = RESULTS_DIR / "paper"
 
 
 def read_csv(path: Path, date_columns: list[str] | None = None) -> pd.DataFrame:
@@ -67,6 +68,21 @@ def load_trade_history() -> pd.DataFrame:
 
 def load_position_snapshot() -> pd.DataFrame:
     return read_csv(SIMULATION_DIR / "latest_position_snapshot.csv", ["timestamp"])
+
+
+def load_paper_status() -> dict:
+    """results/paper/status.json written by the paper runner / make paper-status ({} if absent)."""
+    import json
+
+    path = PAPER_DIR / "status.json"
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def load_paper_journal() -> pd.DataFrame:
+    return read_csv(PAPER_DIR / "journal.csv", ["signal_date"])
 
 
 def latest_row(frame: pd.DataFrame) -> pd.Series:

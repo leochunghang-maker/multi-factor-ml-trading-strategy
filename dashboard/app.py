@@ -12,6 +12,8 @@ from dashboard import charts
 from dashboard.data import (
     load_execution_log,
     load_live_signals,
+    load_paper_journal,
+    load_paper_status,
     load_portfolio_exposure,
     load_position_snapshot,
     load_rolling_risk,
@@ -153,7 +155,7 @@ def main() -> None:
         )
 
     st.header("Audit Tables")
-    tabs = st.tabs(["Exposure", "Turnover", "Signals", "Execution Log"])
+    tabs = st.tabs(["Exposure", "Turnover", "Signals", "Execution Log", "Paper Account"])
     with tabs[0]:
         show_table("Portfolio Exposure Report", exposure.tail(20).sort_index(ascending=False))
     with tabs[1]:
@@ -165,6 +167,24 @@ def main() -> None:
         )
     with tabs[3]:
         show_table("Execution Log", execution_log.tail(50).sort_index(ascending=False))
+    with tabs[4]:
+        show_paper_account(load_paper_status(), load_paper_journal())
+
+
+def show_paper_account(status: dict, journal: pd.DataFrame) -> None:
+    """Read-only view of results/paper/ (simulated paper account; see make paper-status)."""
+    if not status:
+        st.info("No paper account status yet. Run `make paper-daily` or `make paper-status`.")
+        return
+    st.markdown(f"**Overall status:** {status.get('overall_status')} · generated {status.get('generated_at')} "
+                f"· completed runs {status.get('completed_runs')}")
+    for alert in status.get("active_alerts", []):
+        (st.error if alert.get("severity") == "ERROR" else st.warning)(f"{alert.get('check')}: {alert.get('message')}")
+    if not journal.empty:
+        st.line_chart(journal.set_index("signal_date")["nav_end"], height=220)
+    show_table("Paper Journal", journal.tail(20).sort_index(ascending=False))
+    show_table("Recent Alerts", pd.DataFrame(status.get("recent_alerts", [])),
+               ["timestamp", "severity", "kind", "signal_date", "message"])
 
 
 if __name__ == "__main__":
