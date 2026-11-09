@@ -6,6 +6,10 @@ Design (fixed a priori, see README "Beta-neutral long/short construction"):
   trailing ``lookback`` trading days ending at the rebalance date (inclusive —
   the close is known when the month-end book is formed), ``min_obs`` required.
 - Blume shrinkage toward 1: ``beta = (1 - s) * beta_raw + s * 1`` with s = 1/3.
+- ``estimator="ewma"`` (default since trial 43): the same slope estimated by
+  weighted least squares with weights ``0.5 ** (k / half_life)``, k = trading days
+  before the as-of close (k = 0 newest), renormalised within the same window.
+  ``estimator="ols"`` reproduces the equal-weight fe8b173 betas exactly.
 - Names without enough history get beta = 1 (the shrinkage target).
 - Leg scaling keeps gross and sets long-leg beta equal to short-leg beta, with
   the long/short gross ratio bounded to ``[1/R, R]``.
@@ -27,6 +31,27 @@ def shrink_beta(raw: pd.Series | float, shrinkage: float):
     return (1.0 - float(shrinkage)) * raw + float(shrinkage)
 
 
+BETA_ESTIMATORS = ("ols", "ewma")
+
+
+def observation_weights(n: int, *, estimator: str = "ols", half_life: float = 63.0) -> np.ndarray:
+    """Window weights, oldest first: flat for OLS, ``0.5 ** (k / half_life)`` for EWMA.
+
+    k counts trading days back from the newest row (k = 0). Normalisation is
+    irrelevant to the slope, so the raw kernel is returned.
+    """
+    if estimator not in BETA_ESTIMATORS:
+        raise ValueError(f"beta estimator must be one of {BETA_ESTIMATORS}, got {estimator!r}")
+    if n <= 0:
+        return np.zeros(0)
+    if estimator == "ols":
+        return np.ones(n)
+    if not float(half_life) > 0:
+        raise ValueError("beta EWMA half-life must be positive")
+    k = np.arange(n - 1, -1, -1, dtype=float)
+    return 0.5 ** (k / float(half_life))
+
+
 def estimate_betas_as_of(
     stock_returns: pd.DataFrame,
     benchmark_returns: pd.Series,
@@ -35,8 +60,10 @@ def estimate_betas_as_of(
     lookback: int = 252,
     min_obs: int = 126,
     shrinkage: float = 1.0 / 3.0,
+    estimator: str = "ols",
+    half_life: float = 63.0,
 ) -> pd.Series:
-    """Shrunk OLS betas using only rows dated on/before ``as_of_date``."""
+    """Shrunk OLS or EWMA-weighted betas using only rows dated on/before ``as_of_date``."""
     as_of = pd.Timestamp(as_of_date)
     bench = benchmark_returns.loc[benchmark_returns.index <= as_of].dropna().tail(int(lookback))
     window = stock_returns.reindex(bench.index)
@@ -44,14 +71,19 @@ def estimate_betas_as_of(
     Y = window.to_numpy(dtype=float)
     mask = np.isfinite(Y)
     n = mask.sum(axis=0)
-    xm = np.where(mask, x[:, None], np.nan)
+    kernel = observation_weights(len(x), estimator=estimator, half_life=half_life)
+    # Per-name weights: zero where the stock has no return; renormalised per column.
+    W = np.where(mask, kernel[:, None], 0.0)
+    Yz = np.where(mask, Y, 0.0)
     with np.errstate(invalid="ignore", divide="ignore"), warnings.catch_warnings():
-        # Names with no data in the window yield all-NaN columns (→ beta 1 below).
+        # Names with no data in the window yield empty columns (→ beta 1 below).
         warnings.simplefilter("ignore", category=RuntimeWarning)
-        x_mean = np.nanmean(xm, axis=0)
-        y_mean = np.nanmean(Y, axis=0)
-        cov = np.nansum((xm - x_mean) * (Y - y_mean), axis=0) / (n - 1)
-        var = np.nansum((xm - x_mean) ** 2, axis=0) / (n - 1)
+        wsum = W.sum(axis=0)
+        x_mean = (W * x[:, None]).sum(axis=0) / wsum
+        y_mean = (W * Yz).sum(axis=0) / wsum
+        dx = x[:, None] - x_mean
+        cov = (W * dx * (Yz - y_mean)).sum(axis=0)
+        var = (W * dx**2).sum(axis=0)
         raw = cov / var
     raw = pd.Series(raw, index=stock_returns.columns, dtype=float)
     raw[(n < int(min_obs)) | ~np.isfinite(raw.to_numpy())] = np.nan
@@ -66,6 +98,8 @@ def build_beta_panel(
     lookback: int = 252,
     min_obs: int = 126,
     shrinkage: float = 1.0 / 3.0,
+    estimator: str = "ols",
+    half_life: float = 63.0,
 ) -> pd.DataFrame:
     """Date x ticker panel of causal shrunk betas at each requested date."""
     stock_returns = prices.pct_change(fill_method=None)
@@ -74,6 +108,7 @@ def build_beta_panel(
         estimate_betas_as_of(
             stock_returns, bench_returns, date,
             lookback=lookback, min_obs=min_obs, shrinkage=shrinkage,
+            estimator=estimator, half_life=half_life,
         )
         for date in pd.DatetimeIndex(dates)
     ]
@@ -182,6 +217,8 @@ def research_beta_panel(
     from src.config import (
         BENCHMARK_PRICES_PATH,
         BETA_BENCHMARK,
+        BETA_ESTIMATOR,
+        BETA_EWMA_HALF_LIFE_DAYS,
         BETA_LOOKBACK_DAYS,
         BETA_MIN_OBS,
         BETA_NEUTRAL,
@@ -204,4 +241,5 @@ def research_beta_panel(
     return build_beta_panel(
         prices, bench, dates,
         lookback=BETA_LOOKBACK_DAYS, min_obs=BETA_MIN_OBS, shrinkage=BETA_SHRINKAGE,
+        estimator=BETA_ESTIMATOR, half_life=BETA_EWMA_HALF_LIFE_DAYS,
     )

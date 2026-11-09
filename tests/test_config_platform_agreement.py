@@ -68,6 +68,8 @@ def test_config_values_agree_with_platform_config() -> None:
     assert config.BETA_NEUTRAL == research["beta_neutral"]
     assert config.BETA_LOOKBACK_DAYS == research["beta_lookback_days"]
     assert config.BETA_SHRINKAGE == research["beta_shrinkage"]
+    assert config.BETA_ESTIMATOR == research["beta_estimator"]
+    assert config.BETA_EWMA_HALF_LIFE_DAYS == research["beta_ewma_half_life_days"]
     assert config.BETA_NEUTRAL_MAX_LEG_RATIO == research["beta_neutral_max_leg_ratio"]
     assert config.SECTOR_NEUTRAL == research["sector_neutral"]
     assert config.MAX_SECTOR_NET_EXPOSURE == research["max_sector_net_exposure"]

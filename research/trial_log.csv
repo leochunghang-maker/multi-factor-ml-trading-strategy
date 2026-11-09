@@ -39,5 +39,6 @@ trial_id,date,commit,family,description,trial_increment,reported_sharpe,notes
 38,2026-11-09,c6dd1e6,multi_day_sim,Sim regenerated with vol targeting + ADV cap,1,0.827,
 39,2026-11-09,e433b15,benchmark_relative,Alpha/IR vs equal-weight universe,1,,Logged before running
 40,2026-11-09,e433b15,benchmark_relative,Alpha/IR vs SPY,1,,Logged before running
-41,2026-11-09,pending,walk_forward_ml,Beta-neutral L/S legs (SPY beta 252d Blume-shrunk; inner scoring same),1,0.43,Logged before running
-42,2026-11-09,pending,multi_factor,Beta-neutral L/S legs (SPY beta 252d Blume-shrunk),1,0.26,Logged before running
+41,2026-11-09,fe8b173,walk_forward_ml,Beta-neutral L/S legs (SPY beta 252d Blume-shrunk; inner scoring same),1,0.43,Logged before running
+42,2026-11-09,fe8b173,multi_factor,Beta-neutral L/S legs (SPY beta 252d Blume-shrunk),1,0.26,Logged before running
+43,2026-11-09,pending,multi_factor,EWMA beta estimator for beta-neutral legs (half-life 63d; 252d window; Blume-shrunk; applied to MF + WF + nested inner),1,0.25,Logged before running; single trial (WF re-run under the same estimator for consistency: Sharpe 0.45)

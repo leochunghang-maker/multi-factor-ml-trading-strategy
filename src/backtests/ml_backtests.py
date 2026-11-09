@@ -34,6 +34,7 @@ from src.models.validation import (
 from src.models.ml import train_random_forest
 from src.models.nested import default_nested_candidates, select_model_nested
 from src.execution.borrow_tiers import research_borrow_bps_panel
+from src.config import BETA_ESTIMATOR
 from src.risk.beta import research_beta_panel
 from src.portfolio import (
     build_prediction_long_short_returns,
@@ -155,6 +156,7 @@ def run_walk_forward_ml_backtest(
                 "paired_n": meta["paired_n"],
                 "inner_name_level_borrow": meta["inner_name_level_borrow"],
                 "inner_beta_neutral": meta["inner_beta_neutral"],
+                "inner_beta_estimator": BETA_ESTIMATOR if meta["inner_beta_neutral"] else "",
                 "n_train_rows": meta["n_train_rows"],
                 "train_start": meta["train_start"],
                 "train_end": meta["train_end"],
