@@ -175,6 +175,8 @@ MULTI_DAY_ROLLING_WINDOW = int(_SIMULATION.get("rolling_window", 63))
 
 TRANSACTION_COST = float(_EXECUTION.get("transaction_cost", 0.001))
 BENCHMARK_SYMBOL = "SPY"
+BENCHMARK_PRICES_PATH = "data/benchmark_prices.csv"
+BENCHMARK_SOURCE_PATH = "data/benchmark_source.json"
 TARGET_VOLATILITY = float(_RESEARCH.get("target_volatility", _RISK.get("target_volatility", 0.15)))
 VOLATILITY_LOOKBACK = int(_RESEARCH.get("vol_lookback_periods", 6))
 MAX_LEVERAGE = float(_RESEARCH.get("vol_max_scale", 1.5))
@@ -388,7 +390,8 @@ XGBOOST_PARAMS = {
 
 # Significance / "how much could be luck" settings (see README).
 _SIGNIFICANCE = _PLATFORM.get("significance", {})
-SIGNIFICANCE_N_TRIALS = int(_SIGNIFICANCE.get("n_trials", 50))
+SIGNIFICANCE_TRIAL_LOG_PATH = str(_SIGNIFICANCE.get("trial_log_path", "research/trial_log.csv"))
+SIGNIFICANCE_TRIAL_PADDING = int(_SIGNIFICANCE.get("trial_padding", 14))
 SIGNIFICANCE_N_TRIALS_SENSITIVITY = [
     int(x) for x in _SIGNIFICANCE.get("n_trials_sensitivity", [15, 50, 100, 200])
 ]
@@ -398,10 +401,11 @@ SIGNIFICANCE_BLOCK_LENGTH_MONTHLY = float(_SIGNIFICANCE.get("bootstrap_block_len
 SIGNIFICANCE_BLOCK_LENGTH_DAILY = float(_SIGNIFICANCE.get("bootstrap_block_length_daily", 13))
 SIGNIFICANCE_CONFIDENCE = float(_SIGNIFICANCE.get("bootstrap_confidence", 0.95))
 SIGNIFICANCE_SEED = int(_SIGNIFICANCE.get("bootstrap_seed", 42))
-SIGNIFICANCE_TRIAL_SHARPES = {
-    "walk_forward_ml": [float(x) for x in _SIGNIFICANCE.get("trial_sharpes_walk_forward", [])],
-    "multi_factor": [float(x) for x in _SIGNIFICANCE.get("trial_sharpes_multi_factor", [])],
-    "multi_day_sim": [float(x) for x in _SIGNIFICANCE.get("trial_sharpes_multi_day_sim", [])],
-}
+SIGNIFICANCE_IR_VARIANCE_SOURCE = str(_SIGNIFICANCE.get("ir_variance_source", "pooled")).strip().lower()
+_HAC_LAGS = _SIGNIFICANCE.get("hac_lags")
+SIGNIFICANCE_HAC_LAGS = None if _HAC_LAGS is None else int(_HAC_LAGS)
+SIGNIFICANCE_CAUSAL_BETA_WINDOW_MONTHLY = int(_SIGNIFICANCE.get("causal_beta_window_monthly", 36))
+SIGNIFICANCE_CAUSAL_BETA_WINDOW_DAILY = int(_SIGNIFICANCE.get("causal_beta_window_daily", 252))
 SIGNIFICANCE_REPORT_PATH = "results/significance_report.csv"
+BENCHMARK_RELATIVE_REPORT_PATH = "results/benchmark_relative_report.csv"
 WALK_FORWARD_PERIOD_RETURNS_PATH = "results/walk_forward_period_returns.csv"

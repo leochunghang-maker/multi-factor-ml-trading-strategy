@@ -290,23 +290,37 @@ confidence interval (≈ ±0.9 at 95%).
 
 ### Statistical Significance (regenerated 2026-11-09)
 
-From `results/significance_report.csv` (`src/run_significance_report.py`): stationary block
-bootstrap (5,000 resamples, seed 42, mean block 4 months / 13 days), Probabilistic Sharpe Ratio
-vs 0, and Deflated Sharpe Ratio with **N = 50 trials** (36 configurations recorded in the repo
-history, rounded up; see README) and cross-trial Sharpe variance from the reported Sharpes of
-each strategy family.
+From `results/significance_report.csv` and `results/benchmark_relative_report.csv`
+(`src/run_significance_report.py`): stationary block bootstrap (5,000 resamples, seed 42, mean
+block 4 months / 13 days), Probabilistic Sharpe Ratio vs 0, and Deflated Sharpe Ratio with
+**N = 54 trials** read from `research/trial_log.csv` (40 logged variants + 14 documented
+padding) and cross-trial Sharpe variance from each family's logged Sharpes.
 
-| Series | T | Sharpe | 95% CI | PSR(0) | SR0 | DSR (N=50) | DSR (N=200) |
+| Series | T | Sharpe | 95% CI | PSR(0) | SR0 | DSR (N=54) | DSR (N=200) |
 |---|---:|---:|---|---:|---:|---:|---:|
-| Walk-forward ML | 57 m | 0.71 | [-0.21, 1.74] | 0.94 | 0.60 | 0.60 | 0.49 |
-| Multi-factor L/S | 93 m | 0.31 | [-0.35, 1.01] | 0.80 | 0.70 | 0.14 | 0.07 |
-| Multi-day sim (long-only) | 1968 d | 0.88 | [0.32, 1.50] | 0.99 | 0.11 | 0.98 (0.72 pooled V) | 0.98 (0.57 pooled V) |
-| Equal-weight universe buy-and-hold (reference) | 1968 d | 1.08 | [0.41, 1.86] | 1.00 | — | — | — |
+| Walk-forward ML | 57 m | 0.71 | [-0.21, 1.74] | 0.94 | 0.61 | 0.59 | 0.49 |
+| Multi-factor L/S | 93 m | 0.31 | [-0.35, 1.01] | 0.80 | 0.71 | 0.13 | 0.07 |
+| Multi-day sim (long-only) | 1968 d | 0.88 | [0.32, 1.50] | 0.99 | 0.11 | 0.98 (0.72 pooled V) | 0.98 (0.58 pooled V) |
+| Daily-rebalanced equal-weight universe (reference) | 1968 d | 1.08 | [0.41, 1.86] | 1.00 | — | — | — |
 
-Neither long/short research strategy clears a DSR of 0.95: the walk-forward ML result is
-compatible with luck plus selection, and the multi-factor result shows no evidence of skill
-after deflation. The long-only simulation is "significant" only because it carries equity
-beta; it trails a naive equal-weight buy-and-hold of the same universe.
+Benchmark-relative (OLS with Newey–West HAC SEs; IR and causal beta-hedged Sharpe deflated with
+N = 54 and pooled V[SR]):
+
+| Series | Benchmark | α (ann.) | α t | β | IR [95% CI] | Causal hedged SR | Hedged DSR |
+|---|---|---:|---:|---:|---|---:|---:|
+| Walk-forward ML | EW universe | 3.7% | 0.53 | 0.49 | -0.29 [-1.10, 0.53] | 0.11 | 0.16 |
+| Walk-forward ML | SPY | 4.4% | 0.63 | 0.54 | -0.12 [-0.98, 0.72] | 0.19 | 0.19 |
+| Multi-factor L/S | EW universe | 12.4% | 1.92 | -0.31 | -0.44 [-0.95, 0.09] | 0.52 | 0.35 |
+| Multi-factor L/S | SPY | 9.5% | 1.52 | -0.19 | -0.34 [-0.86, 0.19] | 0.42 | 0.27 |
+| Multi-day sim | EW universe | 2.3% | 0.49 | 0.81 | -0.10 [-0.73, 0.52] | 0.20 | 0.10 |
+| Multi-day sim | SPY | 4.2% | 0.91 | 0.85 | 0.11 [-0.54, 0.72] | 0.37 | 0.21 |
+
+No series shows statistically significant alpha: all HAC t-stats are below 1.96 before any
+multiple-testing adjustment and all deflated statistics are far below 0.95. The walk-forward
+L/S book carries β ≈ 0.5, so roughly half its Sharpe is market exposure; the multi-factor book
+has negative β and improves when hedged but remains insignificant after deflation; the
+long-only simulation's Sharpe is equity beta (IR vs SPY ≈ 0.1). IR versus a long-only benchmark
+is not a meaningful skill test for the L/S books — use alpha and hedged Sharpe there.
 
 ### Older narrative snapshot (not current)
 
@@ -357,7 +371,7 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 
 - From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **6.43% annual return**, **0.31 Sharpe**, **-42.40% max drawdown**, and **38.82% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
 - Walk-forward ML with the one-SE nested rule shows **11.62% annual return**, **0.71 Sharpe**, **-20.08% max drawdown**, **62.96% cumulative** over 2022-01-31 → 2026-09-30 (57 periods). Inner folds found no candidate significantly better than `rf_default`, so this is effectively the fixed production RF; argmax selection on the same inner scores gave **0.63% / 0.04**. Prior unscaled-inner EWMA (**10.17% / 0.62**), realized-vol targeting (**10.02% / 0.62**), sector-neutral-only (**6.34% / 0.37**), and older HTB-only / **23.1% / 0.88** figures are superseded.
-- Significance: walk-forward ML Sharpe 0.71 has a 95% block-bootstrap CI of [-0.21, 1.74] and Deflated Sharpe Ratio **0.60** at N = 50 trials; multi-factor DSR is **0.14**. Neither is statistically established; the long-only sim's high DSR reflects market beta (it trails equal-weight buy-and-hold, Sharpe 0.88 vs 1.08).
+- Significance: walk-forward ML Sharpe 0.71 has a 95% block-bootstrap CI of [-0.21, 1.74] and Deflated Sharpe Ratio **0.59** at N = 54 logged-plus-padded trials; multi-factor DSR is **0.13**. Versus SPY and an equal-weight universe no series has significant alpha (all HAC t < 1.96); the walk-forward book has β ≈ 0.5 and the long-only sim's Sharpe is market beta.
 - The architecture now separates data, features, models, portfolio construction, backtests, risk, and reporting into reusable modules.
 - Risk analytics add review context by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
 - The research remains a prototype until official S&P 100 PIT constituents (not only an S&P 500 proxy), more realistic trading costs, borrow assumptions, and production-grade data are added.
@@ -372,5 +386,5 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 - Extend capacity analysis beyond the 5% ADV participation trade cap (e.g. multi-day
   participation schedules, venue-level liquidity, and AUM stress at institutional size).
 - Add robust experiment tracking for model versions, features, parameters, and validation windows.
-- Pre-register the next research change (hypothesis, metric, N-trial increment) before running it, and add a beta-hedged / benchmark-relative significance test for the long-only simulation; widen the nested candidate menu only with purge/embargo and the one-SE rule.
+- Make the long/short books beta-neutral by construction (ex-ante beta-balanced legs) as a pre-registered trial in `research/trial_log.csv`, then re-run the benchmark-relative tests; widen the nested candidate menu only with purge/embargo and the one-SE rule.
 - Add production-quality data checks for stale prices, corporate actions, missing data, and symbol changes.

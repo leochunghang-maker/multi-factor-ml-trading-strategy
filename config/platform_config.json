@@ -102,7 +102,8 @@
     "metadata_dir": "results/operations/run_metadata"
   },
   "significance": {
-    "n_trials": 50,
+    "trial_log_path": "research/trial_log.csv",
+    "trial_padding": 14,
     "n_trials_sensitivity": [
       15,
       50,
@@ -115,40 +116,10 @@
     "bootstrap_block_length_daily": 13,
     "bootstrap_confidence": 0.95,
     "bootstrap_seed": 42,
-    "trial_sharpes_walk_forward": [
-      0.88,
-      0.7,
-      0.69,
-      0.65,
-      0.42,
-      0.65,
-      0.63,
-      0.37,
-      0.62,
-      0.62,
-      0.04,
-      0.13,
-      0.04,
-      0.7,
-      0.71
-    ],
-    "trial_sharpes_multi_factor": [
-      1.16,
-      0.39,
-      0.3,
-      0.27,
-      0.23,
-      0.26,
-      0.3,
-      0.31
-    ],
-    "trial_sharpes_multi_day_sim": [
-      0.898,
-      0.882,
-      0.928,
-      0.819,
-      0.827
-    ],
-    "note": "n_trials is a conservative count of strategy/variant configurations whose performance was observed in this repo's research history (see README 'How much could be luck?'): 15 walk-forward ML variants + 8 multi-factor variants + 1 momentum-only + 4 ML baseline models + 3 nested candidates + 5 multi-day sim variants = 36 recorded, rounded up to 50 for unrecorded pre-2026-11 iterations and unswept researcher choices. trial_sharpes_* are the annualized Sharpes actually reported for each family; their sample variance (converted to per-period) is V[SR] in the Deflated Sharpe Ratio. Block lengths ~ T^(1/3)."
+    "ir_variance_source": "pooled",
+    "hac_lags": null,
+    "causal_beta_window_monthly": 36,
+    "causal_beta_window_daily": 252,
+    "note": "n_trials = sum(trial_increment) in research/trial_log.csv + trial_padding. The log is backfilled from git history (every configuration whose result was observed) and must be appended BEFORE running a new variant. trial_padding=14 is a fixed, documented allowance for unrecorded pre-2026-11 iterations and never-swept researcher choices. V[SR] for each family is the sample variance of that family's reported_sharpe values in the log; information-ratio DSR uses the pooled variance over all reported Sharpes (ir_variance_source=pooled) because no IR history exists. hac_lags=null uses the Newey-West rule floor(4*(T/100)^(2/9))."
   }
 }

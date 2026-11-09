@@ -1,16 +1,21 @@
+from pathlib import Path
+
 import pandas as pd
 import yfinance as yf
 
-from src.config import PRICE_DATA_PATH
+from src.config import BENCHMARK_PRICES_PATH, PRICE_DATA_PATH
 from src.data.io import load_price_data
 from src.portfolio import month_end_trading_dates
 
 
 def _benchmark_prices_from_local_data(symbol: str) -> pd.Series | None:
-    prices = load_price_data(PRICE_DATA_PATH)
-    if symbol not in prices.columns:
-        return None
-    return prices[symbol].dropna()
+    for path in (PRICE_DATA_PATH, BENCHMARK_PRICES_PATH):
+        if not Path(path).exists():
+            continue
+        prices = load_price_data(path)
+        if symbol in prices.columns:
+            return prices[symbol].dropna()
+    return None
 
 
 def _monthly_returns_from_prices(prices: pd.Series) -> pd.Series:

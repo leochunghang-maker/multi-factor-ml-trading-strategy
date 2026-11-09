@@ -3,10 +3,22 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+import json
+from datetime import datetime, timezone
+
 import pandas as pd
 import yfinance as yf
 
-from src.config import END_DATE, PRICE_DATA_PATH, START_DATE, TICKERS, VOLUME_DATA_PATH
+from src.config import (
+    BENCHMARK_PRICES_PATH,
+    BENCHMARK_SOURCE_PATH,
+    BENCHMARK_SYMBOL,
+    END_DATE,
+    PRICE_DATA_PATH,
+    START_DATE,
+    TICKERS,
+    VOLUME_DATA_PATH,
+)
 from src.data.universe import drop_empty_price_columns
 
 
@@ -57,8 +69,43 @@ def download_volume_data():
     return save_volume_data(_download())
 
 
+def download_benchmark_data(symbol: str = BENCHMARK_SYMBOL) -> pd.DataFrame:
+    """Download the benchmark's adjusted close into ``data/benchmark_prices.csv``.
+
+    Uses the same yfinance call (auto_adjust=True, START_DATE..END_DATE) as the
+    equity panel and records provenance next to it, so benchmark-relative tests
+    are reproducible offline from checked-in data.
+    """
+    data = _download(tickers=[symbol])
+    close = data["Close"]
+    if isinstance(close, pd.Series):
+        close = close.to_frame(name=symbol)
+    close = close.reindex(columns=[symbol]).dropna(how="all")
+    close.index.name = "Date"
+    Path(BENCHMARK_PRICES_PATH).parent.mkdir(parents=True, exist_ok=True)
+    close.to_csv(BENCHMARK_PRICES_PATH)
+    source = {
+        "symbol": symbol,
+        "source": "Yahoo Finance via yfinance.download(auto_adjust=True)",
+        "yfinance_version": getattr(yf, "__version__", "unknown"),
+        "start": START_DATE,
+        "end_exclusive": END_DATE,
+        "first_date": str(close.index.min().date()),
+        "last_date": str(close.index.max().date()),
+        "rows": int(len(close)),
+        "downloaded_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "note": "Total-return-style adjusted close (dividends/splits). Yahoo may revise "
+                "adjusted history; re-download changes values slightly.",
+    }
+    Path(BENCHMARK_SOURCE_PATH).write_text(json.dumps(source, indent=2) + "\n")
+    print(f"Saved benchmark prices to {BENCHMARK_PRICES_PATH}")
+    return close
+
+
 if __name__ == "__main__":
-    if "--volume-only" in sys.argv:
+    if "--benchmark-only" in sys.argv:
+        download_benchmark_data()
+    elif "--volume-only" in sys.argv:
         download_volume_data()
     else:
         download_price_data()

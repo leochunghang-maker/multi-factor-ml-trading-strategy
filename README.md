@@ -415,55 +415,94 @@ Honest caveats:
 ### How much could be luck? (significance, regenerated 2026-11-09)
 
 `python src/run_significance_report.py` (or `make significance`) writes
-`results/significance_report.csv` (module: `src/reporting/significance.py`, settings:
-`config/platform_config.json` → `significance`). For each return series it reports:
+`results/significance_report.csv` (absolute Sharpe) and `results/benchmark_relative_report.csv`
+(alpha / beta / information ratio). Code: `src/reporting/significance.py`,
+`src/reporting/trial_log.py`; settings: `config/platform_config.json` → `significance`.
 
 - **Stationary block bootstrap** (Politis–Romano) 95% percentile CI of the annualized Sharpe:
   5,000 resamples, seed 42, mean block length 4 months (monthly) / 13 days (daily) ≈ T^(1/3).
-  Blocks keep autocorrelation and volatility clustering. `bootstrap_method: circular` is also
-  available.
+  `bootstrap_method: circular` is also available.
 - **Probabilistic Sharpe Ratio** PSR(0) (Bailey & López de Prado 2012): probability the true
   Sharpe is > 0 given T, sample skewness and (non-excess) kurtosis.
 - **Deflated Sharpe Ratio** (Bailey & López de Prado 2014): PSR measured against SR0, the
   expected best Sharpe of `n_trials` skill-less trials with cross-trial Sharpe variance V[SR].
 
-**Number of trials (`significance.n_trials = 50`).** Counted from this repo's git history and
-README/report snapshots — every configuration whose backtest Sharpe was actually looked at:
-15 walk-forward ML variants (pre-2026-11 narrative, full-history rebuild, PIT, borrow, nested
-raw-IC, cost-aware, HTB, sector-neutral, realized vol, EWMA, consistent-inner argmax, inner-vol
-off, flat-borrow argmax, ensemble, one-SE) + 8 multi-factor variants + 1 momentum-only + 4 ML
-baseline models (`results/reports/ml_baseline_comparison.csv`) + 3 nested candidates + 5
-multi-day sim variants = **36 recorded**. We round up to **50** to cover unrecorded iterations
-before 2026-11 and researcher choices that were never swept (long/short counts, lookbacks,
-target vol, half-lives, thresholds). This is still probably an *under*count of the true
-search, so the CSV also gives DSR at N = 15, 100 and 200.
+#### Trial log and the number of trials
 
-**V[SR].** Taken from the Sharpes actually reported for each family
-(`significance.trial_sharpes_*`): cross-trial stdev of annualized Sharpe ≈ 0.26 (walk-forward),
-0.31 (multi-factor), 0.05 (multi-day sim). The sim variants are near-duplicates, so their
-variance understates the search; `deflated_sharpe_ratio_pooled_var` repeats DSR with the
-variance pooled over all 28 reported Sharpes (stdev ≈ 0.30) as a more conservative check.
-These trials are not independent; treating them as independent is the standard DSR assumption
-and errs toward a larger SR0.
+`research/trial_log.csv` lists every research variant whose result was observed (date, commit,
+family, description, `trial_increment`, `reported_sharpe`), backfilled from git history and the
+README/report snapshots. **Rule: append the row before running a new variant or test** (use
+`commit=pending` until it is committed), then fill in `reported_sharpe` if one is observed.
+Never delete rows for variants that "didn't work".
 
-| Series (N = 50) | T | Sharpe | 95% block-bootstrap CI | P(boot SR ≤ 0) | PSR(0) | SR0 | DSR | DSR (pooled V) |
+`n_trials = Σ trial_increment + significance.trial_padding` = **40 logged + 14 padding = 54**.
+The 40 rows: 17 walk-forward ML variants (two whose Sharpe was seen but not recorded), 8
+multi-factor, 1 momentum-only, 4 ML baseline models, 3 nested candidates, 5 multi-day sim
+variants, and 2 benchmark-relative tests (this change, logged before it was run). The fixed
+padding of 14 covers unrecorded pre-2026-11 iterations and never-swept researcher choices
+(long/short counts, lookbacks, target vol, half-lives, thresholds). This is probably still an
+undercount, so `significance_report.csv` also gives DSR at N = 15, 50, 100 and 200.
+
+**V[SR]** is the sample variance of each family's logged `reported_sharpe` values: stdev of
+annualized Sharpe ≈ 0.26 (walk-forward), 0.31 (multi-factor), 0.05 (multi-day sim; the sim
+variants are near-duplicates, so this understates the search). `deflated_sharpe_ratio_pooled_var`
+repeats DSR with the variance pooled over all 29 logged Sharpes (stdev ≈ 0.29) as a more
+conservative check. The trials are not independent; the standard DSR treatment as independent
+errs toward a larger SR0.
+
+| Series (N = 54) | T | Sharpe | 95% block-bootstrap CI | P(boot SR ≤ 0) | PSR(0) | SR0 | DSR | DSR (pooled V) |
 |---|---:|---:|---|---:|---:|---:|---:|---:|
-| Walk-forward ML (monthly, 2022-01 → 2026-09) | 57 | 0.71 | [-0.21, 1.74] | 6.3% | 0.94 | 0.60 | **0.60** | 0.54 |
-| Multi-factor L/S (monthly, 2019-01 → 2026-09) | 93 | 0.31 | [-0.35, 1.01] | 17.6% | 0.80 | 0.70 | **0.14** | 0.16 |
-| Multi-day paper sim, long-only (daily, 2019-01-03 → 2026-10-30) | 1968 | 0.88 | [0.32, 1.50] | 0.1% | 0.99 | 0.11 | **0.98** | 0.72 |
-| Reference: equal-weight universe buy-and-hold (daily, same window) | 1968 | 1.08 | [0.41, 1.86] | 0.1% | 1.00 | — | — | — |
+| Walk-forward ML (monthly, 2022-01 → 2026-09) | 57 | 0.71 | [-0.21, 1.74] | 6.3% | 0.94 | 0.61 | **0.59** | 0.54 |
+| Multi-factor L/S (monthly, 2019-01 → 2026-09) | 93 | 0.31 | [-0.35, 1.01] | 17.6% | 0.80 | 0.71 | **0.13** | 0.16 |
+| Multi-day paper sim, long-only (daily, 2019-01-03 → 2026-10-30) | 1968 | 0.88 | [0.32, 1.50] | 0.1% | 0.99 | 0.11 | 0.98 | **0.72** |
+| Reference: daily-rebalanced equal-weight universe (same window) | 1968 | 1.08 | [0.41, 1.86] | 0.1% | 1.00 | — | — | — |
+
+(The equal-weight reference is rebalanced daily to equal weights over the names with a price
+that day; an earlier version of this README called it "buy-and-hold", which was inaccurate.)
+
+#### Benchmark-relative tests
+
+Benchmarks, both from checked-in data: (1) the daily-rebalanced **equal-weight universe**
+from `data/price_data.csv` (same survivorship-biased ticker list as the strategies), and (2)
+**SPY** adjusted close in `data/benchmark_prices.csv`, downloaded with the existing loader
+(`python src/data_loader.py --benchmark-only`, yfinance `auto_adjust=True`, provenance in
+`data/benchmark_source.json`; Yahoo can revise adjusted history, so a re-download may differ
+slightly). Monthly strategies are compared with month-end → next-month-end benchmark returns
+indexed at the entry date (same convention as the research P&L).
+
+Per series: OLS `r_s = a + b·r_b` with **Newey–West HAC** standard errors (Bartlett kernel,
+lags = floor(4·(T/100)^(2/9)) → 3 monthly / 7 daily; cross-checked against `statsmodels`),
+annualized alpha `a × periods/year`, **information ratio** (annualized Sharpe of `r_s − r_b`)
+with the same block bootstrap, PSR and DSR (N = 54, pooled V[SR] because no IR history
+exists), and a **beta-hedged** Sharpe: in-sample (full-sample beta, look-ahead, descriptive)
+and **causal** (`r_s − β_{t−1}·r_b`, β from the trailing 36 months / 252 days only), also
+deflated.
+
+| Series | Benchmark | α (ann.) | α t (HAC) | β | IR | IR 95% CI | IR DSR | Hedged SR (in-sample) | Hedged SR (causal) | Causal hedged DSR |
+|---|---|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| Walk-forward ML | EW universe | 3.7% | 0.53 | 0.49 | -0.29 | [-1.10, 0.53] | 0.02 | 0.25 | 0.11 | 0.16 |
+| Walk-forward ML | SPY | 4.4% | 0.63 | 0.54 | -0.12 | [-0.98, 0.72] | 0.04 | 0.31 | 0.19 | 0.19 |
+| Multi-factor L/S | EW universe | 12.4% | 1.92 | -0.31 | -0.44 | [-0.95, 0.09] | 0.00 | 0.61 | 0.52 | 0.35 |
+| Multi-factor L/S | SPY | 9.5% | 1.52 | -0.19 | -0.34 | [-0.86, 0.19] | 0.00 | 0.46 | 0.42 | 0.27 |
+| Multi-day sim (long-only) | EW universe | 2.3% | 0.49 | 0.81 | -0.10 | [-0.73, 0.52] | 0.02 | 0.15 | 0.20 | 0.10 |
+| Multi-day sim (long-only) | SPY | 4.2% | 0.91 | 0.85 | 0.11 | [-0.54, 0.72] | 0.06 | 0.29 | 0.37 | 0.21 |
 
 Interpretation:
-- **Walk-forward ML:** the CI includes zero and DSR ≈ 0.60 (0.49 at N = 200), far below the
-  usual 0.95 bar. The 0.71 Sharpe is consistent with a modest edge, but also with luck plus
-  selection across the variants we tried. It is **not statistically established**.
-- **Multi-factor:** DSR ≈ 0.14. After deflating for trials there is no evidence of skill.
-- **Multi-day sim:** the high PSR/DSR reflects being **long-only equity in a rising market**,
-  not alpha. Its Sharpe (0.88) is *below* a naive equal-weight buy-and-hold of the same
-  (survivorship-biased) universe (1.08) over the same window. The sim Sharpe here (0.88) is
-  higher than the full-window 0.83 because the all-cash 2018 warm-up is excluded.
-- All numbers inherit residual survivorship bias, static sectors, and simplified costs, which
-  all bias Sharpe upward.
+- **No series has statistically significant alpha.** Every HAC alpha t-stat is below 1.96 even
+  before any multiple-testing adjustment, and every deflated IR / hedged DSR is far below 0.95.
+- **Walk-forward ML** is not market-neutral in practice: dollar-neutral L/S but β ≈ 0.5 to the
+  market (longs carry more beta than shorts). About half of its 0.71 Sharpe is market exposure;
+  beta-hedged it falls to 0.11–0.31.
+- **Multi-factor L/S** has negative beta, so hedging *raises* its Sharpe (0.31 → ~0.5) and its
+  alpha t-stat (1.9 vs EW) is the strongest here — but still not significant once deflated
+  (DSR 0.27–0.35). Its IR versus a long-only benchmark mostly measures "short the market" and
+  is not a meaningful skill test for an L/S book; use the alpha / hedged rows.
+- **Multi-day sim** (long-only, β ≈ 0.8–0.85) earns its Sharpe from equity beta. Versus SPY
+  the IR is ≈ 0.1 with a CI spanning zero; versus the equal-weight universe it is negative.
+- Absolute PSR/DSR in the first table should be read together with this one: high absolute
+  significance for the sim does not imply skill.
+- All results inherit residual survivorship bias, static sectors and simplified costs, which
+  bias performance upward.
 
 ### Older narrative snapshot (not reproduced by current artifacts)
 

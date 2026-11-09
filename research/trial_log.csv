@@ -1,0 +1,41 @@
+trial_id,date,commit,family,description,trial_increment,reported_sharpe,notes
+1,2026-05-24,0bd6275,walk_forward_ml,Original walk-forward ML narrative (23.1% annual),1,0.88,Not reproducible; overlapping 21d returns
+2,2026-05-24,0bd6275,multi_factor,Original multi-factor narrative (24.92% annual),1,1.16,Not reproducible from committed results
+3,2026-05-24,0bd6275,ml_baseline,ML baseline: random_forest (results/reports/ml_baseline_comparison.csv),1,,Compared by rank IC / MSE only
+4,2026-05-24,0bd6275,ml_baseline,ML baseline: linear_regression,1,,Compared by rank IC / MSE only
+5,2026-05-24,0bd6275,ml_baseline,ML baseline: ridge,1,,Compared by rank IC / MSE only
+6,2026-05-24,0bd6275,ml_baseline,ML baseline: lasso,1,,Compared by rank IC / MSE only
+7,2026-11-05,069d595,walk_forward_ml,Walk-forward month-end non-overlapping rebalancing,1,,Sharpe observed but not recorded in docs
+8,2026-11-05,486f202,walk_forward_ml,Walk-forward with purge/embargo,1,,Sharpe observed but not recorded in docs
+9,2026-11-05,ed838d3,walk_forward_ml,Full-history rebuild (END_DATE 2026-11-01),1,0.70,
+10,2026-11-05,ed838d3,multi_factor,Full-history rebuild,1,0.39,
+11,2026-11-05,7776399,momentum,Momentum-only backtest regenerated,1,0.441,
+12,2026-11-05,6ad2d61,multi_day_sim,Sim before half-spread + sqrt impact,1,0.898,
+13,2026-11-05,6ad2d61,multi_day_sim,Sim with half-spread + sqrt impact,1,0.882,
+14,2026-11-06,75796fa,multi_day_sim,Sim with drawdown halt,1,0.928,
+15,2026-11-06,530d8bd,walk_forward_ml,PIT eligibility filter,1,0.69,
+16,2026-11-06,530d8bd,multi_factor,PIT eligibility filter,1,0.30,
+17,2026-11-06,530d8bd,multi_day_sim,Sim with PIT eligibility filter,1,0.819,
+18,2026-11-06,6152dd3,walk_forward_ml,Short borrow / financing costs,1,0.65,
+19,2026-11-06,6152dd3,multi_factor,Short borrow / financing costs,1,0.27,
+20,2026-11-06,f761cd4,walk_forward_ml,Nested selection (raw rank IC inner score),1,0.42,
+21,2026-11-06,f761cd4,nested_candidate,Nested candidate ridge_1,1,,Inner menu member
+22,2026-11-06,f761cd4,nested_candidate,Nested candidate rf_shallow,1,,Inner menu member
+23,2026-11-06,f761cd4,nested_candidate,Nested candidate rf_default,1,,Inner menu member
+24,2026-11-06,40c2ab1,walk_forward_ml,Nested cost-aware Sharpe inner score,1,0.65,
+25,2026-11-06,8173d69,walk_forward_ml,Name-level HTB borrow tiers,1,0.63,
+26,2026-11-06,8173d69,multi_factor,Name-level HTB borrow tiers,1,0.23,
+27,2026-11-06,9ab703f,walk_forward_ml,Sector-neutral construction,1,0.37,
+28,2026-11-06,9ab703f,multi_factor,Sector-neutral construction,1,0.26,
+29,2026-11-06,6369768,walk_forward_ml,Realized-vol targeting,1,0.62,
+30,2026-11-06,6369768,multi_factor,Realized-vol targeting,1,0.30,
+31,2026-11-06,b517457,walk_forward_ml,EWMA vol targeting,1,0.62,
+32,2026-11-06,b517457,multi_factor,EWMA vol targeting,1,0.31,
+33,2026-11-09,2c6d681,walk_forward_ml,Inner scoring consistent with outer book (argmax),1,0.04,
+34,2026-11-09,2c6d681,walk_forward_ml,Same with inner vol targeting off (sensitivity),1,0.13,
+35,2026-11-09,147723c,walk_forward_ml,Argmax with flat inner borrow (sensitivity),1,0.04,
+36,2026-11-09,147723c,walk_forward_ml,Equal-weight ensemble (sensitivity),1,0.70,
+37,2026-11-09,147723c,walk_forward_ml,One-SE fallback (current default),1,0.71,
+38,2026-11-09,c6dd1e6,multi_day_sim,Sim regenerated with vol targeting + ADV cap,1,0.827,
+39,2026-11-09,pending,benchmark_relative,Alpha/IR vs equal-weight universe,1,,Logged before running
+40,2026-11-09,pending,benchmark_relative,Alpha/IR vs SPY,1,,Logged before running

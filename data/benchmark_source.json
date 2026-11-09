@@ -1,0 +1,12 @@
+{
+  "symbol": "SPY",
+  "source": "Yahoo Finance via yfinance.download(auto_adjust=True)",
+  "yfinance_version": "1.8.0",
+  "start": "2018-01-01",
+  "end_exclusive": "2026-11-01",
+  "first_date": "2018-01-02",
+  "last_date": "2026-10-30",
+  "rows": 2220,
+  "downloaded_at_utc": "2026-11-09T09:42:32+00:00",
+  "note": "Total-return-style adjusted close (dividends/splits). Yahoo may revise adjusted history; re-download changes values slightly."
+}
