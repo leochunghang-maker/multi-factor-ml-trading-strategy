@@ -23,6 +23,17 @@ def _read_json(path: Path) -> dict[str, Any] | None:
         return None
 
 
+def _latest_tracking(paths) -> dict[str, Any] | None:
+    from src.operations.paper_ops import read_csv_safe
+    from src.operations.paper_tracking import TRACKING_COLUMNS, tracking_path
+
+    frame = read_csv_safe(tracking_path(paths), TRACKING_COLUMNS)
+    if frame.empty:
+        return None
+    row = frame.iloc[-1].to_dict()
+    return {k: (None if isinstance(v, float) and v != v else v) for k, v in row.items()}
+
+
 def build_paper_status(paths=None, recent_alerts: int = 10, journal_rows: int = 5) -> dict[str, Any]:
     from src.operations.paper_ops import (
         JOURNAL_COLUMNS,
@@ -45,6 +56,13 @@ def build_paper_status(paths=None, recent_alerts: int = 10, journal_rows: int = 
                 "message": f"Latest run {latest['signal_date']} was halted at drawdown "
                            f"{float(latest.get('drawdown') or 0.0):.2%} (rebalance skipped).",
             })
+    try:
+        from src.operations.paper_tracking import latest_tracking_findings
+
+        active += [{"severity": s, "check": c, "message": m}
+                   for s, c, m in latest_tracking_findings(paths) if s in ("WARNING", "ERROR")]
+    except Exception as exc:  # pragma: no cover - defensive
+        active.append({"severity": "WARNING", "check": "tracking", "message": f"tracking check failed: {exc}"})
     overall = "OK"
     for item in active:
         if SEVERITY_RANK[item["severity"]] > SEVERITY_RANK[overall]:
@@ -59,6 +77,7 @@ def build_paper_status(paths=None, recent_alerts: int = 10, journal_rows: int = 
         "latest_run": latest,
         "last_gate": _read_json(paths.gate),
         "last_reconciliation": _read_json(paths.reconciliation),
+        "latest_tracking": _latest_tracking(paths),
         "active_alerts": active,
         "recent_alerts": read_alerts(paths, recent_alerts)[::-1],
         "journal_tail": journal.sort_values("signal_date").tail(journal_rows).to_dict("records")
@@ -96,6 +115,17 @@ def render_paper_status(status: dict[str, Any]) -> str:
         )
     else:
         lines.append("- Latest run: none")
+    tracking = status.get("latest_tracking")
+    if tracking:
+        gap = tracking.get("hold_gap_bps")
+        ratio = tracking.get("cost_ratio")
+        dev = tracking.get("weight_deviation")
+        lines.append(
+            f"- Tracking vs frictionless backtest ({tracking['signal_date']}, {tracking['status']}): holding gap "
+            + (f"{gap:+.1f} bps" if gap is not None else "n/a")
+            + " · cost ratio " + (f"{ratio:.2f}" if ratio is not None else "n/a")
+            + " · weight deviation " + (f"{dev:.1%}" if dev is not None else "n/a")
+        )
     lines += ["", "## Active alerts", ""]
     if status["active_alerts"]:
         lines += [f"- **{a['severity']}** `{a['check']}`: {a['message']}" for a in status["active_alerts"]]

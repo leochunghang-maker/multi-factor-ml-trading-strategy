@@ -107,6 +107,16 @@ The lock makes overlapping triggers safe (a manual `make paper` during a schedul
 code 3). A crashed run leaves a stale lock that the next run removes automatically (dead pid on
 the same host, or older than `paper_trading.lock_stale_hours`).
 
+## Paper vs Backtest Tracking
+
+Every completed paper run updates `results/paper/tracking.csv`: the paper account versus a
+frictionless backtest of the previous run's target weights (holding gap), realized versus modeled
+cost per traded dollar, and realized versus target weights. Thresholds are fixed in
+`paper_tracking` (see README, "Paper-run operations") and were chosen from the simulator design
+before any tracking result existed; do not tune them on results. Breaches are `tracking_breach`
+alerts (local files only), appear in `make paper-status`, and are summarised in the weekly
+review.
+
 ## Simulation Workflow
 
 Run:

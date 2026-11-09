@@ -340,3 +340,40 @@ def test_gate_block_raises_error_alert(tmp_path) -> None:
     enforce_data_gate(paths, paper_data_gate(as_of="2026-11-09", config=GATE_CONFIG, root=tmp_path))
     assert build_paper_status(paths)["overall_status"] == "OK"
     assert len(read_alerts(paths)) == 1
+
+
+def _with_targets(fake, weights: dict[str, float]) -> None:
+    import dataclasses
+
+    path = fake.root / "latest_signals.csv"
+    pd.DataFrame([{"ticker": t, "side": "LONG", "target_weight": w} for t, w in weights.items()]).to_csv(path, index=False)
+    fake.files = dataclasses.replace(fake.files, targets=path)
+
+
+def test_runs_store_targets_and_prices_and_track_cleanly(env) -> None:
+    paths, fake = env
+    _with_targets(fake, {"AAA": 0.005})  # the fake buys 10 x 50 = 0.5% of NAV
+    _run(paths, fake, "2026-11-02")
+    fake.price = 55.0
+    _run(paths, fake, "2026-11-03")
+    run_dir = paths.run_dir("2026-11-03")
+    assert (run_dir / "targets.csv").exists()
+    assert pd.read_csv(run_dir / "prices.csv").to_dict("records") == [{"symbol": "AAA", "price": 55.0}]
+    tracking = pd.read_csv(paths.root / "tracking.csv")
+    assert list(tracking["status"]) == ["FIRST_RUN", "OK"]
+    assert abs(tracking.iloc[1]["hold_gap_bps"]) < 1.0  # paper and shadow both +5 bps on 0.5% weight
+    assert [a["kind"] for a in read_alerts(paths)] == []
+    status = json.loads(paths.status_json.read_text())
+    assert status["overall_status"] == "OK" and status["latest_tracking"]["status"] == "OK"
+    assert "Tracking vs frictionless backtest" in paths.status_md.read_text()
+
+
+def test_tracking_breach_raises_alert_and_shows_in_status(env) -> None:
+    paths, fake = env
+    _with_targets(fake, {"AAA": 0.5, "BBB": 0.5})  # paper only buys AAA worth 0.5% of NAV
+    _run(paths, fake, "2026-11-02")
+    alerts = read_alerts(paths)
+    assert [(a["kind"], a["details"]["check"]) for a in alerts] == [("tracking_breach", "tracking_weights")]
+    status = build_paper_status(paths)
+    assert status["overall_status"] == "WARNING"
+    assert any(a["check"] == "tracking_weights" for a in status["active_alerts"])

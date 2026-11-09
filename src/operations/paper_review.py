@@ -83,6 +83,10 @@ def build_weekly_review(paths=None, week_of=None) -> dict[str, Any]:
     gate_checks = int(len(gates))
     gate_blocked = int(gates["blocked"].map(_truthy).sum()) if gate_checks else 0
 
+    from src.operations.paper_tracking import TRACKING_COLUMNS, tracking_path, weekly_tracking
+
+    tracking = weekly_tracking(read_csv_safe(tracking_path(paths), TRACKING_COLUMNS), start, end)
+
     def col_sum(name: str) -> float:
         return float(pd.to_numeric(week[name], errors="coerce").fillna(0).sum()) if runs else 0.0
 
@@ -112,6 +116,7 @@ def build_weekly_review(paths=None, week_of=None) -> dict[str, Any]:
         "gate_blocked": gate_blocked,
         "gate_block_rate": (gate_blocked / gate_checks) if gate_checks else None,
         "alerts": alerts[-20:],
+        "tracking": tracking,
     }
 
 
@@ -151,6 +156,23 @@ def render_weekly_review(r: dict[str, Any]) -> str:
         "",
     ]
     lines += [f"- `{k}`: {v}" for k, v in r["alerts_by_kind"].items()] or ["- None."]
+    t = r.get("tracking") or {}
+    if t:
+        lines += [
+            "", "## Paper vs frictionless backtest", "",
+            "Shadow = previous run's target weights at the two runs' prices, no costs; thresholds are fixed "
+            "(`paper_tracking` in the platform config).", "",
+            "| Metric | Value |", "|---|---:|",
+            f"| Intervals compared / skipped | {t['intervals']} / {t['skipped']} |",
+            f"| Cumulative holding gap | {_fmt(t['cum_gap_bps'])} bps |",
+            f"| Tracking error (std of gaps) | {_fmt(t['tracking_error_bps'])} bps |",
+            f"| Largest absolute gap | {_fmt(t['max_abs_gap_bps'])} bps |",
+            f"| Mean cost ratio (realized / modeled) | {_fmt(t['mean_cost_ratio'])} |",
+            f"| Largest weight deviation | {_fmt(t['max_weight_deviation'], 'pct')} |",
+            "",
+        ]
+        lines += [f"- **{f['severity']}** `{f['check']}`: {f['message']}" for f in t["findings"]] or [
+            "- Within thresholds."]
     lines += ["", "## Runs", ""]
     lines.append(", ".join(r["signal_dates"]) if r["signal_dates"] else "No completed runs this week.")
     if r["alerts"]:

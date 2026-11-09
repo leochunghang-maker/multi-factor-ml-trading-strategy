@@ -168,5 +168,17 @@
     "backup_dir": "backups/paper",
     "lock_path": "results/operations/paper_daily.lock",
     "lock_stale_hours": 6
+  },
+  "paper_tracking": {
+    "hold_gap_warning_bps": 50.0,
+    "hold_gap_error_bps": 200.0,
+    "weekly_cum_gap_warning_bps": 100.0,
+    "weight_deviation_warning": 0.1,
+    "cost_ratio_min": 0.75,
+    "cost_ratio_max": 2.0,
+    "min_traded_fraction_for_cost_check": 0.005,
+    "max_missing_target_weight": 0.05,
+    "modeled_cost_bps": null,
+    "note": "Fixed 2026-11-09 from the simulator design, before any tracking result was computed; do not tune on results. Paper vs a frictionless backtest of the previous run's target weights. Holding gap: ~1% cash buffer x a large daily move (~3%) is ~3 bps, so 50 bps (WARNING) / 200 bps (ERROR) per interval and 100 bps per week flag real divergence (missed orders, stale or wrong prices), not noise. Weight deviation 10% of NAV = one fully missed equal-weight position (10 names). Cost ratio: realized per traded dollar vs modeled commission+slippage+half-spread (modeled_cost_bps null = derived from execution, 17 bps); impact is not modeled, so 0.75-2.0 allows impact and rounding but flags a broken cost path. Cost check only when traded >= 0.5% of NAV; gap skipped when > 5% of target weight has no price."
   }
 }

@@ -12,6 +12,8 @@ Alert kinds:
 - ``drawdown_halt``            (WARNING) drawdown breached the halt threshold;
                                          the rebalance was skipped (book frozen).
 - ``run_blocked``              (WARNING) e.g. out-of-order signal date.
+- ``tracking_breach``          (WARNING/ERROR) paper vs frictionless backtest gap
+                                         beyond the fixed thresholds (paper_tracking).
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ ALERT_KINDS = {
     "reconciliation_mismatch": "ERROR",
     "drawdown_halt": "WARNING",
     "run_blocked": "WARNING",
+    "tracking_breach": "WARNING",
 }
 
 

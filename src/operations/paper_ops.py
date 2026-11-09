@@ -19,6 +19,9 @@ Layout (``results/paper/``, gitignored operator-local state)::
     last_gate.json               last pre-run data gate result (read by health)
     gate_history.csv             one row per pre-run data gate decision (weekly review)
     reviews/weekly-<YYYY>-W<ww>.md/.json   weekly review (src/operations/paper_review.py)
+    tracking.csv                 paper vs frictionless target-weight backtest, one row per
+                                 interval between runs (src/operations/paper_tracking.py)
+    runs/<date>/targets.csv, prices.csv   implemented signal file and the run's prices
     alerts.jsonl                 local alerts: gate block, reconciliation mismatch,
                                  drawdown halt (src/operations/paper_alerts.py)
     status.md / status.json      summary written by ``make paper-status`` and after
@@ -458,6 +461,7 @@ class SimulationFiles:
     fills: Path
     rejected: Path
     state_files: list[Path]
+    targets: Path | None = None  # signal file the run implemented (copied as targets.csv)
 
     @classmethod
     def default(cls) -> "SimulationFiles":
@@ -477,6 +481,7 @@ class SimulationFiles:
             fills=Path(c.SIMULATED_LATEST_FILLS_PATH),
             rejected=Path(c.SIMULATED_LATEST_REJECTED_PATH),
             state_files=[Path(p) for p in state],
+            targets=Path(c.LIVE_SIGNALS_PATH),
         )
 
 
@@ -554,6 +559,12 @@ def run_paper_day(
                 shutil.copy2(src, staging / name)
             else:
                 (staging / name).write_text("")
+        # Inputs for the paper-vs-backtest tracking check (src/operations/paper_tracking.py).
+        if sim.targets is not None and Path(sim.targets).exists():
+            shutil.copy2(sim.targets, staging / "targets.csv")
+        if prices:
+            write_csv_atomic(staging / "prices.csv", pd.DataFrame(
+                sorted(prices.items()), columns=["symbol", "price"]))
         write_json_atomic(staging / "start_state.json", start)
         write_json_atomic(staging / "end_state.json", end)
         write_csv_atomic(staging / "positions_start.csv", positions_frame(start, prices))
@@ -630,6 +641,7 @@ def run_paper_day(
         key="signal_date", columns=JOURNAL_COLUMNS,
     )
     write_text_atomic(paths.journal_md, render_journal_markdown(journal))
+    _check_tracking(paths, day, run_id, log)
     _refresh_status(paths)
     log(f"Paper run for signal date {day} {'replaced' if action == 'replace' else 'completed'}: "
         f"{paths.run_dir(day)} (reconciliation {recon_status})")
@@ -667,6 +679,20 @@ def paper_health_findings(paths: PaperOpsPaths | None = None) -> list[tuple[str,
         dupes = sorted(ledger.loc[ledger["signal_date"].duplicated(), "signal_date"].astype(str).unique())
         findings.append(("ERROR", "paper_ledger", f"Duplicate ledger rows for signal date(s): {', '.join(dupes)}"))
     return findings
+
+
+def _check_tracking(paths: PaperOpsPaths, day: str, run_id: str, log: Callable[[str], None]) -> None:
+    """Paper-vs-backtest tracking for the interval ending at ``day``; WARNING/ERROR -> alert."""
+    try:
+        from src.operations.paper_tracking import latest_tracking_findings, write_tracking
+
+        write_tracking(paths)
+        for severity, check, message in latest_tracking_findings(paths):
+            if severity in ("WARNING", "ERROR"):
+                raise_alert(paths, "tracking_breach", f"{check}: {message}", severity=severity,
+                            signal_date=day, run_id=run_id, log=log, details={"check": check})
+    except Exception as exc:  # pragma: no cover - defensive: never fail a completed run
+        log(f"warning: tracking check failed: {exc}")
 
 
 def _refresh_status(paths: PaperOpsPaths) -> None:
