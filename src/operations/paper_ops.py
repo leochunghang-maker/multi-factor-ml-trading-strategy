@@ -17,6 +17,10 @@ Layout (``results/paper/``, gitignored operator-local state)::
     journal.csv / journal.md     concise daily journal (upserted / re-rendered)
     latest_reconciliation.json   pre-run reconciliation result (read by health)
     last_gate.json               last pre-run data gate result (read by health)
+    alerts.jsonl                 local alerts: gate block, reconciliation mismatch,
+                                 drawdown halt (src/operations/paper_alerts.py)
+    status.md / status.json      summary written by ``make paper-status`` and after
+                                 every run or alert (src/operations/paper_status.py)
 
 Idempotency key: the signal date. A second run for a completed signal date is
 skipped with a log line; ``force=True`` replaces it atomically (only the most
@@ -35,6 +39,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 import pandas as pd
+
+from src.operations.paper_alerts import raise_alert
 
 CASH_TOLERANCE = 0.01
 QUANTITY_TOLERANCE = 1e-6
@@ -92,6 +98,18 @@ class PaperOpsPaths:
     @property
     def gate(self) -> Path:
         return self.root / "last_gate.json"
+
+    @property
+    def alerts(self) -> Path:
+        return self.root / "alerts.jsonl"
+
+    @property
+    def status_md(self) -> Path:
+        return self.root / "status.md"
+
+    @property
+    def status_json(self) -> Path:
+        return self.root / "status.json"
 
 
 def _date_str(value) -> str:
@@ -335,14 +353,21 @@ def paper_data_gate(
     }
 
 
-def enforce_data_gate(paths: PaperOpsPaths, gate: dict[str, Any]) -> None:
+def enforce_data_gate(
+    paths: PaperOpsPaths, gate: dict[str, Any], run_id: str | None = None, log: Callable[[str], None] | None = None
+) -> None:
     write_json_atomic(paths.gate, gate)
     if gate["blocked"]:
-        raise PaperRunBlocked(
+        message = (
             "data checks failed for the paper run (staleness is an ERROR on this path): "
             + "; ".join(gate["errors"])
             + ". Refresh the paper data (python src/data_loader.py --paper) and retry."
         )
+        raise_alert(paths, "data_gate_blocked", message, run_id=run_id, log=log,
+                    details={"as_of": gate.get("as_of"), "errors": gate["errors"]})
+        _refresh_status(paths)
+        raise PaperRunBlocked(message)
+    _refresh_status(paths)
 
 
 # -------------------------------------------------------------------- journal
@@ -479,7 +504,11 @@ def run_paper_day(
         write_json_atomic(paths.reconciliation, {**recon, "signal_date": day})
         if recon["status"] == "MISMATCH":
             message = "reconciliation mismatch before the run: " + "; ".join(recon["issues"])
+            raise_alert(paths, "reconciliation_mismatch", message, signal_date=day, run_id=run_id, log=log,
+                        details={"stage": "pre_run", "issues": recon["issues"],
+                                 "continued": allow_reconciliation_mismatch})
             if not allow_reconciliation_mismatch:
+                _refresh_status(paths)
                 raise PaperRunBlocked(message + " (investigate, or rerun with --allow-reconciliation-mismatch)")
             log(f"WARNING {message} (continuing: --allow-reconciliation-mismatch)")
 
@@ -545,6 +574,17 @@ def run_paper_day(
             "checked_at": _now(), "signal_date": day, "status": "MISMATCH",
             "previous_run": recon.get("previous_run"), "issues": post_issues,
         })
+        raise_alert(paths, "reconciliation_mismatch",
+                    "fills do not explain the end state: " + "; ".join(post_issues),
+                    signal_date=day, run_id=run_id, log=log, details={"stage": "post_run", "issues": post_issues})
+    if bool(snapshot.get("drawdown_halted", False)):
+        raise_alert(
+            paths, "drawdown_halt",
+            f"drawdown {float(snapshot.get('drawdown', 0.0)):.2%} breached the halt threshold; "
+            "rebalance skipped (book frozen) for this signal date",
+            signal_date=day, run_id=run_id, log=log,
+            details={"drawdown": snapshot.get("drawdown"), "nav": snapshot.get("portfolio_value")},
+        )
 
     data_status = (data_gate or {}).get("status", "UNKNOWN")
     upsert_row(paths.ledger, {
@@ -566,6 +606,7 @@ def run_paper_day(
         key="signal_date", columns=JOURNAL_COLUMNS,
     )
     write_text_atomic(paths.journal_md, render_journal_markdown(journal))
+    _refresh_status(paths)
     log(f"Paper run for signal date {day} {'replaced' if action == 'replace' else 'completed'}: "
         f"{paths.run_dir(day)} (reconciliation {recon_status})")
     return {"status": "COMPLETED", "action": action, "signal_date": day, "run_dir": str(paths.run_dir(day)),
@@ -602,3 +643,13 @@ def paper_health_findings(paths: PaperOpsPaths | None = None) -> list[tuple[str,
         dupes = sorted(ledger.loc[ledger["signal_date"].duplicated(), "signal_date"].astype(str).unique())
         findings.append(("ERROR", "paper_ledger", f"Duplicate ledger rows for signal date(s): {', '.join(dupes)}"))
     return findings
+
+
+def _refresh_status(paths: PaperOpsPaths) -> None:
+    """Rewrite status.md/status.json; never let a summary failure break a run."""
+    try:
+        from src.operations.paper_status import write_paper_status
+
+        write_paper_status(paths)
+    except Exception as exc:  # pragma: no cover - defensive
+        print(f"warning: could not write paper status summary: {exc}")

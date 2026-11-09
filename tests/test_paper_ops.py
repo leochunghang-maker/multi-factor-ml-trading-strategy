@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 
 from src.data.quality import blank_excluded_symbols, run_data_checks
+from src.operations.paper_alerts import read_alerts
 from src.operations.paper_ops import (
     PaperOpsPaths,
     PaperRunBlocked,
@@ -25,6 +26,7 @@ from src.operations.paper_ops import (
     replay_fills,
     run_paper_day,
 )
+from src.operations.paper_status import build_paper_status
 
 FILL_COLUMNS = ["symbol", "side", "quantity", "price", "notional", "transaction_cost", "status"]
 
@@ -36,6 +38,7 @@ class FakeSimulation:
         self.root = root
         self.price = price
         self.fail = fail
+        self.halted = False
         self.calls = 0
         self.files = SimulationFiles(
             broker_state=root / "broker_state.json",
@@ -71,7 +74,7 @@ class FakeSimulation:
         nav = state["cash"] + sum(q * self.price for q in state["positions"].values())
         return {"starting_portfolio_value": start_nav, "portfolio_value": nav, "pnl": nav - start_nav,
                 "trades_filled": 1, "orders_rejected": 0, "turnover": 0.005, "drawdown": 0.0,
-                "drawdown_halted": False, "vol_scale": 1.0, "capacity_clipped_positions": 0,
+                "drawdown_halted": self.halted, "vol_scale": 1.0, "capacity_clipped_positions": 0,
                 "order_adv_clips": 0, "cash": state["cash"]}
 
 
@@ -275,3 +278,65 @@ def test_excluded_symbol_is_recorded_as_info_and_blanked_on_download(tmp_path) -
     findings, _ = run_data_checks(as_of="2026-11-09", config=config, root=tmp_path)
     bk = [f for f in findings if "BK" in f.message]
     assert bk and all(f.severity == "INFO" for f in bk)
+
+
+# ---------------------------------------------------------------- alerts/status
+
+
+def test_clean_runs_raise_no_alerts_and_status_is_ok(env) -> None:
+    paths, fake = env
+    _run(paths, fake, "2026-11-02")
+    _run(paths, fake, "2026-11-03")
+    assert read_alerts(paths) == []
+    status = json.loads(paths.status_json.read_text())
+    assert status["overall_status"] == "OK" and status["completed_runs"] == 2
+    assert status["latest_run"]["signal_date"] == "2026-11-03"
+    assert "Overall status: **OK**" in paths.status_md.read_text()
+
+
+def test_reconciliation_mismatch_raises_error_alert_and_status(env) -> None:
+    paths, fake = env
+    _run(paths, fake, "2026-11-02")
+    state = fake.state()
+    state["cash"] -= 10.0
+    fake.files.broker_state.write_text(json.dumps(state))
+    with pytest.raises(PaperRunBlocked):
+        _run(paths, fake, "2026-11-03")
+    alerts = read_alerts(paths)
+    assert [a["kind"] for a in alerts] == ["reconciliation_mismatch"]
+    assert alerts[0]["severity"] == "ERROR" and alerts[0]["signal_date"] == "2026-11-03"
+    assert alerts[0]["details"]["stage"] == "pre_run"
+    status = build_paper_status(paths)
+    assert status["overall_status"] == "ERROR"
+    assert "reconciliation_mismatch" in paths.status_md.read_text()
+
+
+def test_drawdown_halt_raises_warning_alert(env) -> None:
+    paths, fake = env
+    fake.halted = True
+    _run(paths, fake, "2026-11-02")
+    alerts = read_alerts(paths)
+    assert [(a["kind"], a["severity"]) for a in alerts] == [("drawdown_halt", "WARNING")]
+    status = build_paper_status(paths)
+    assert status["overall_status"] == "WARNING"
+    assert any(a["check"] == "drawdown_halt" for a in status["active_alerts"])
+    fake.halted = False
+    _run(paths, fake, "2026-11-03")
+    assert build_paper_status(paths)["overall_status"] == "OK"  # active alert clears; history stays
+    assert len(read_alerts(paths)) == 1
+
+
+def test_gate_block_raises_error_alert(tmp_path) -> None:
+    _write_data(tmp_path, "2026-10-30")
+    paths = PaperOpsPaths(tmp_path / "paper")
+    gate = paper_data_gate(as_of="2026-11-09", config=GATE_CONFIG, root=tmp_path)
+    with pytest.raises(PaperRunBlocked):
+        enforce_data_gate(paths, gate, run_id="r1")
+    alerts = read_alerts(paths)
+    assert [(a["kind"], a["severity"], a["run_id"]) for a in alerts] == [("data_gate_blocked", "ERROR", "r1")]
+    assert "BLOCKED" in paths.status_md.read_text()
+    # A later passing gate clears the active alert but keeps the history.
+    _write_data(tmp_path, "2026-11-06")
+    enforce_data_gate(paths, paper_data_gate(as_of="2026-11-09", config=GATE_CONFIG, root=tmp_path))
+    assert build_paper_status(paths)["overall_status"] == "OK"
+    assert len(read_alerts(paths)) == 1

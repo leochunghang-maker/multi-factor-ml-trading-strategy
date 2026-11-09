@@ -34,6 +34,8 @@ from src.operations.paper_ops import (
     plan_run,
     run_paper_day,
 )
+from src.operations.paper_alerts import raise_alert
+from src.operations.paper_status import write_paper_status
 from src.reporting.summary import generate_summary_report
 
 
@@ -184,6 +186,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def blocked(run_id: str, step: str, message: str) -> int:
     print(f"   BLOCKED: {message}")
+    print("   Alert recorded in results/paper/alerts.jsonl; see results/paper/status.md (make paper-status).")
     write_failure_status(f"{step} blocked: {message}")
     log_event("paper_run_blocked", message, level="ERROR", run_id=run_id, step=step)
     status = build_health_status()
@@ -231,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     print_step(2, "Pre-run data gate (staleness is an ERROR on the paper path)")
     gate = paper_data_gate(as_of=args.as_of, data_paths=data_paths)
     try:
-        enforce_data_gate(paths, gate)
+        enforce_data_gate(paths, gate, run_id=run_id, log=lambda line: print(f"   {line}"))
     except PaperRunBlocked as exc:
         return blocked(run_id, "Pre-run data gate", str(exc))
     print(f"   ok: data checks {gate['status']} as of {gate['as_of']} ({gate['calendar']} calendar, {gate['data_dir']}/)")
@@ -243,6 +246,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         action = plan_run(paths, price_date, force=args.force)
     except PaperRunBlocked as exc:
+        raise_alert(paths, "run_blocked", str(exc), signal_date=str(price_date.date()), run_id=run_id,
+                    log=lambda line: print(f"   {line}"))
+        write_paper_status(paths)
         return blocked(run_id, "Idempotency check", str(exc))
     if action == "skip":
         message = (
@@ -325,6 +331,7 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(f"Run folder: {outcome['run_dir']}")
     print(f"Journal: {paths.journal_md}")
+    print(f"Paper status: {paths.status_md} (make paper-status)")
     print(f"Paper trading status report: {PAPER_TRADING_STATUS_REPORT_PATH}")
     print(f"Run metadata: {metadata['metadata_path']}")
     log_event("workflow_completed", "Daily paper-trading workflow completed.", run_id=run_id)
