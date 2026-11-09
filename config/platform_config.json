@@ -133,6 +133,10 @@
       "data/borrow_tier_overrides.csv"
     ],
     "hash_mismatch_severity": "WARNING",
+    "excluded_symbols": {
+      "BK": "Decision 2026-11-09: keep excluded. The checked-in snapshot has an all-NaN BK column (failed Yahoo download), so BK was never eligible in any committed result. Re-downloading it would change the research universe and results, i.e. a new trial. data_loader.py blanks excluded symbols after every download so refreshes keep the same universe."
+    },
+    "paper_stale_severity": "ERROR",
     "report_path": "reports/data_quality_report.md",
     "note": "Freshness counts weekdays after the last date up to the as-of date (exchange holidays are not excluded, so it can overcount by a holiday). Misalignment compares price, volume and benchmark date ranges and index sets against price_data.csv. Hashes are SHA-256 of the file with CRLF normalised to LF; update the manifest only after reviewing a re-download (python src/check_data.py --update-manifest)."
   },

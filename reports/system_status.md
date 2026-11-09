@@ -1,6 +1,6 @@
 # System Status
 
-- Generated at: 2026-11-09T10:24:55+00:00
+- Generated at: 2026-11-09T10:39:17+00:00
 - Overall status: ERROR
 
 ## Findings
@@ -11,8 +11,6 @@
 - **WARNING** `data_freshness`: price_data: last date 2026-10-30 is 6 trading days before 2026-11-09 (limit 5)
 - **WARNING** `data_freshness`: volume_data: last date 2026-10-30 is 6 trading days before 2026-11-09 (limit 5)
 - **WARNING** `data_freshness`: benchmark_prices: last date 2026-10-30 is 6 trading days before 2026-11-09 (limit 5)
-- **WARNING** `data_empty_columns`: price_data: all-NaN column(s): BK
-- **WARNING** `data_empty_columns`: volume_data: all-NaN column(s): BK
 - **ERROR** `portfolio_state`: Latest account snapshot is missing.
 - **WARNING** `concentration`: No latest position snapshot available.
 

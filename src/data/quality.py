@@ -45,6 +45,8 @@ DEFAULT_DATA_CHECKS: dict[str, Any] = {
         "data/benchmark_prices.csv",
     ],
     "hash_mismatch_severity": "WARNING",
+    "excluded_symbols": {},
+    "paper_stale_severity": "ERROR",
     "report_path": "reports/data_quality_report.md",
 }
 
@@ -213,8 +215,22 @@ def check_panel_quality(
 
     values = frame.apply(pd.to_numeric, errors="coerce")
     empty = [str(c) for c in values.columns if values[c].isna().all()]
-    if empty:
-        findings.append(DataFinding("WARNING", "empty_columns", name, f"all-NaN column(s): {', '.join(empty)}"))
+    excluded = dict(settings.get("excluded_symbols") or {})
+    decided = [c for c in empty if c in excluded]
+    undecided = [c for c in empty if c not in excluded]
+    if undecided:
+        findings.append(DataFinding("WARNING", "empty_columns", name, f"all-NaN column(s): {', '.join(undecided)}"))
+    if decided:
+        findings.append(DataFinding(
+            "INFO", "excluded_symbols", name,
+            f"all-NaN by recorded decision (data_checks.excluded_symbols): {', '.join(decided)}",
+        ))
+    not_empty = [c for c in excluded if c in values.columns and c not in empty]
+    if not_empty:
+        findings.append(DataFinding(
+            "WARNING", "excluded_symbols", name,
+            f"excluded symbol(s) have data and could enter the universe: {', '.join(not_empty)}",
+        ))
     active = values.drop(columns=empty)
     if active.empty:
         return findings
@@ -338,15 +354,34 @@ def describe_file(path: str | Path) -> dict[str, Any]:
     return entry
 
 
-def build_manifest(files: list[str], root: str | Path = ".") -> dict[str, Any]:
+def build_manifest(
+    files: list[str],
+    root: str | Path = ".",
+    decisions: dict[str, str] | None = None,
+) -> dict[str, Any]:
     root = Path(root)
     entries = {f: describe_file(root / f) for f in files if (root / f).exists()}
-    return {
+    manifest = {
         "description": "SHA-256 (CRLF→LF) and shape of checked-in data inputs. Regenerate only after "
         "reviewing a re-download: python src/check_data.py --update-manifest",
         "updated": date.today().isoformat(),
         "files": entries,
     }
+    if decisions:
+        manifest["excluded_symbols"] = dict(decisions)
+    return manifest
+
+
+def blank_excluded_symbols(frame: pd.DataFrame, excluded) -> pd.DataFrame:
+    """Set excluded symbols to NaN (adding the column if absent), keeping sorted columns.
+
+    Used after downloads so a refresh cannot silently bring an excluded name
+    into the research or paper universe.
+    """
+    out = frame.copy()
+    for symbol in excluded or []:
+        out[symbol] = np.nan
+    return out.reindex(columns=sorted(out.columns))
 
 
 def check_manifest(

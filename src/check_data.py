@@ -61,6 +61,10 @@ def render_report(findings, summary, settings) -> str:
         "news records. Prices are Yahoo auto-adjusted closes, so splits should already be",
         "adjusted; a split-like jump means the adjustment probably failed for that name.",
     ]
+    decisions = settings.get("excluded_symbols") or {}
+    if decisions:
+        lines += ["", "## Recorded data decisions", ""]
+        lines += [f"- **{symbol}** excluded: {reason}" for symbol, reason in decisions.items()]
     for severity in SEVERITIES:
         lines += ["", f"## {severity}", ""]
         rows = [f for f in findings if f.severity == severity]
@@ -81,7 +85,9 @@ def main(argv: list[str] | None = None) -> int:
 
     settings = data_check_settings()
     if args.update_manifest:
-        manifest = build_manifest(list(settings["manifest_files"]))
+        manifest = build_manifest(
+            list(settings["manifest_files"]), decisions=settings.get("excluded_symbols") or None
+        )
         Path(settings["manifest_path"]).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
         print(f"Wrote {settings['manifest_path']} ({len(manifest['files'])} files)")
 

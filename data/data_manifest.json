@@ -1,5 +1,8 @@
 {
   "description": "SHA-256 (CRLF\u2192LF) and shape of checked-in data inputs. Regenerate only after reviewing a re-download: python src/check_data.py --update-manifest",
+  "excluded_symbols": {
+    "BK": "Decision 2026-11-09: keep excluded. The checked-in snapshot has an all-NaN BK column (failed Yahoo download), so BK was never eligible in any committed result. Re-downloading it would change the research universe and results, i.e. a new trial. data_loader.py blanks excluded symbols after every download so refreshes keep the same universe."
+  },
   "files": {
     "data/benchmark_prices.csv": {
       "columns": 2,

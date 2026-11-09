@@ -42,41 +42,60 @@ def extract_volume_frame(data: pd.DataFrame, tickers=TICKERS) -> pd.DataFrame:
     return volumes
 
 
-def save_volume_data(data: pd.DataFrame, path: str = VOLUME_DATA_PATH) -> pd.DataFrame:
+def save_volume_data(
+    data: pd.DataFrame,
+    path: str = VOLUME_DATA_PATH,
+    excluded: dict[str, str] | None = None,
+) -> pd.DataFrame:
+    from src.data.quality import blank_excluded_symbols
+
     volumes = extract_volume_frame(data)
+    volumes = blank_excluded_symbols(volumes, _excluded_symbols() if excluded is None else excluded)
+    volumes.index.name = "Date"
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     volumes.to_csv(path)
     print(f"Saved volume data to {path}")
     return volumes
 
 
-def download_price_data(include_volume: bool = True):
-    Path("data").mkdir(exist_ok=True)
+def _excluded_symbols() -> dict[str, str]:
+    from src.data.quality import data_check_settings
 
-    print("Downloading price data...")
-    data = _download()
-    prices = drop_empty_price_columns(data["Close"])
+    return dict(data_check_settings().get("excluded_symbols") or {})
+
+
+def download_price_data(include_volume: bool = True, end: str = END_DATE):
+    Path("data").mkdir(exist_ok=True)
+    from src.data.quality import blank_excluded_symbols
+
+    print(f"Downloading price data ({START_DATE} to {end}, end exclusive)...")
+    data = _download(end=end)
+    excluded = _excluded_symbols()
+    # Excluded symbols (recorded decisions, e.g. BK) stay all-NaN so a refresh
+    # never changes the universe; other empty columns are dropped as before.
+    prices = drop_empty_price_columns(data["Close"].drop(columns=list(excluded), errors="ignore"))
+    prices = blank_excluded_symbols(prices, excluded)
     prices.to_csv(PRICE_DATA_PATH)
     print(f"Saved price data to {PRICE_DATA_PATH}")
     print(prices.tail())
 
     if include_volume:
-        save_volume_data(data)
+        save_volume_data(data, excluded=excluded)
 
 
-def download_volume_data():
+def download_volume_data(end: str = END_DATE):
     """Download only share volume, leaving the existing price panel untouched."""
-    return save_volume_data(_download())
+    return save_volume_data(_download(end=end))
 
 
-def download_benchmark_data(symbol: str = BENCHMARK_SYMBOL) -> pd.DataFrame:
+def download_benchmark_data(symbol: str = BENCHMARK_SYMBOL, end: str = END_DATE) -> pd.DataFrame:
     """Download the benchmark's adjusted close into ``data/benchmark_prices.csv``.
 
     Uses the same yfinance call (auto_adjust=True, START_DATE..END_DATE) as the
     equity panel and records provenance next to it, so benchmark-relative tests
     are reproducible offline from checked-in data.
     """
-    data = _download(tickers=[symbol])
+    data = _download(tickers=[symbol], end=end)
     close = data["Close"]
     if isinstance(close, pd.Series):
         close = close.to_frame(name=symbol)
@@ -89,7 +108,7 @@ def download_benchmark_data(symbol: str = BENCHMARK_SYMBOL) -> pd.DataFrame:
         "source": "Yahoo Finance via yfinance.download(auto_adjust=True)",
         "yfinance_version": getattr(yf, "__version__", "unknown"),
         "start": START_DATE,
-        "end_exclusive": END_DATE,
+        "end_exclusive": end,
         "first_date": str(close.index.min().date()),
         "last_date": str(close.index.max().date()),
         "rows": int(len(close)),
@@ -120,11 +139,38 @@ def report_changes_vs_manifest() -> None:
     print("Review with `python src/check_data.py --write-report` before `--update-manifest`.")
 
 
+def resolve_end_date(value: str | None) -> str:
+    """``None`` → config END_DATE; ``today`` → tomorrow (yfinance end is exclusive)."""
+    if value is None:
+        return END_DATE
+    if value.lower() == "today":
+        return (pd.Timestamp.today().normalize() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    return pd.Timestamp(value).strftime("%Y-%m-%d")
+
+
+def parse_args(argv=None):
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Download prices, volume and the SPY benchmark (Yahoo).")
+    parser.add_argument("--benchmark-only", action="store_true", help="Only data/benchmark_prices.csv.")
+    parser.add_argument("--volume-only", action="store_true", help="Only data/volume_data.csv.")
+    parser.add_argument("--with-benchmark", action="store_true",
+                        help="Also refresh the benchmark (keeps price/volume/SPY date ranges aligned).")
+    parser.add_argument("--end", default=None,
+                        help=f"End date, exclusive (default {END_DATE}; 'today' for a paper refresh). "
+                             "Changing it changes the research data snapshot.")
+    return parser.parse_args(argv)
+
+
 if __name__ == "__main__":
-    if "--benchmark-only" in sys.argv:
-        download_benchmark_data()
-    elif "--volume-only" in sys.argv:
-        download_volume_data()
+    args = parse_args()
+    end = resolve_end_date(args.end)
+    if args.benchmark_only:
+        download_benchmark_data(end=end)
+    elif args.volume_only:
+        download_volume_data(end=end)
     else:
-        download_price_data()
+        download_price_data(end=end)
+        if args.with_benchmark:
+            download_benchmark_data(end=end)
     report_changes_vs_manifest()
