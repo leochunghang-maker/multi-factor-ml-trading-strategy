@@ -412,6 +412,59 @@ Honest caveats:
 - Sharpe ≈ 0.7 over 57 months has a wide confidence interval (roughly ±0.9 at 95%), and the
   survivorship, static-sector and simplified-cost limitations below still apply.
 
+### How much could be luck? (significance, regenerated 2026-11-09)
+
+`python src/run_significance_report.py` (or `make significance`) writes
+`results/significance_report.csv` (module: `src/reporting/significance.py`, settings:
+`config/platform_config.json` → `significance`). For each return series it reports:
+
+- **Stationary block bootstrap** (Politis–Romano) 95% percentile CI of the annualized Sharpe:
+  5,000 resamples, seed 42, mean block length 4 months (monthly) / 13 days (daily) ≈ T^(1/3).
+  Blocks keep autocorrelation and volatility clustering. `bootstrap_method: circular` is also
+  available.
+- **Probabilistic Sharpe Ratio** PSR(0) (Bailey & López de Prado 2012): probability the true
+  Sharpe is > 0 given T, sample skewness and (non-excess) kurtosis.
+- **Deflated Sharpe Ratio** (Bailey & López de Prado 2014): PSR measured against SR0, the
+  expected best Sharpe of `n_trials` skill-less trials with cross-trial Sharpe variance V[SR].
+
+**Number of trials (`significance.n_trials = 50`).** Counted from this repo's git history and
+README/report snapshots — every configuration whose backtest Sharpe was actually looked at:
+15 walk-forward ML variants (pre-2026-11 narrative, full-history rebuild, PIT, borrow, nested
+raw-IC, cost-aware, HTB, sector-neutral, realized vol, EWMA, consistent-inner argmax, inner-vol
+off, flat-borrow argmax, ensemble, one-SE) + 8 multi-factor variants + 1 momentum-only + 4 ML
+baseline models (`results/reports/ml_baseline_comparison.csv`) + 3 nested candidates + 5
+multi-day sim variants = **36 recorded**. We round up to **50** to cover unrecorded iterations
+before 2026-11 and researcher choices that were never swept (long/short counts, lookbacks,
+target vol, half-lives, thresholds). This is still probably an *under*count of the true
+search, so the CSV also gives DSR at N = 15, 100 and 200.
+
+**V[SR].** Taken from the Sharpes actually reported for each family
+(`significance.trial_sharpes_*`): cross-trial stdev of annualized Sharpe ≈ 0.26 (walk-forward),
+0.31 (multi-factor), 0.05 (multi-day sim). The sim variants are near-duplicates, so their
+variance understates the search; `deflated_sharpe_ratio_pooled_var` repeats DSR with the
+variance pooled over all 28 reported Sharpes (stdev ≈ 0.30) as a more conservative check.
+These trials are not independent; treating them as independent is the standard DSR assumption
+and errs toward a larger SR0.
+
+| Series (N = 50) | T | Sharpe | 95% block-bootstrap CI | P(boot SR ≤ 0) | PSR(0) | SR0 | DSR | DSR (pooled V) |
+|---|---:|---:|---|---:|---:|---:|---:|---:|
+| Walk-forward ML (monthly, 2022-01 → 2026-09) | 57 | 0.71 | [-0.21, 1.74] | 6.3% | 0.94 | 0.60 | **0.60** | 0.54 |
+| Multi-factor L/S (monthly, 2019-01 → 2026-09) | 93 | 0.31 | [-0.35, 1.01] | 17.6% | 0.80 | 0.70 | **0.14** | 0.16 |
+| Multi-day paper sim, long-only (daily, 2019-01-03 → 2026-10-30) | 1968 | 0.88 | [0.32, 1.50] | 0.1% | 0.99 | 0.11 | **0.98** | 0.72 |
+| Reference: equal-weight universe buy-and-hold (daily, same window) | 1968 | 1.08 | [0.41, 1.86] | 0.1% | 1.00 | — | — | — |
+
+Interpretation:
+- **Walk-forward ML:** the CI includes zero and DSR ≈ 0.60 (0.49 at N = 200), far below the
+  usual 0.95 bar. The 0.71 Sharpe is consistent with a modest edge, but also with luck plus
+  selection across the variants we tried. It is **not statistically established**.
+- **Multi-factor:** DSR ≈ 0.14. After deflating for trials there is no evidence of skill.
+- **Multi-day sim:** the high PSR/DSR reflects being **long-only equity in a rising market**,
+  not alpha. Its Sharpe (0.88) is *below* a naive equal-weight buy-and-hold of the same
+  (survivorship-biased) universe (1.08) over the same window. The sim Sharpe here (0.88) is
+  higher than the full-window 0.83 because the all-cash 2018 warm-up is excluded.
+- All numbers inherit residual survivorship bias, static sectors, and simplified costs, which
+  all bias Sharpe upward.
+
 ### Older narrative snapshot (not reproduced by current artifacts)
 
 `reports/quant_research_report.md` previously led with a different multi-factor snapshot
@@ -552,8 +605,10 @@ python src/operations/health.py
   + square-root impact `impact_coefficient_bps * sqrt(notional / 63-day ADV$)` (100 bps coefficient),
   all set in `config/platform_config.json` `execution`. Full-history monthly multi-day simulation
   with drawdown halt (skip rebalance at/below −10%) **and** PIT eligibility filter
-  (2018-01-02 → 2026-10-30, 2220 days, 1405 trades, 9 DRAWDOWN_HALT events): final NAV
-  **$366,120.57**, CAGR **15.84%**, daily Sharpe **0.819**, MDD **−27.01%** at $100k scale.
+  (2018-01-02 → 2026-10-30, 2220 days, 1406 trades, 9 DRAWDOWN_HALT events; regenerated
+  2026-11-09 with vol targeting + ADV participation cap): final NAV **$367,063.49**, CAGR
+  **15.88%**, daily Sharpe **0.827**, MDD **−27.01%** at $100k scale (earlier PIT run without
+  those: $366,120.57 / 15.84% / 0.819).
   Prior drawdown-halt-only run (no PIT filter) was final NAV $459,706.56 / CAGR 18.91% /
   Sharpe 0.928. Research backtests use a flat `transaction_cost`, the same eligibility filter, and monthly stock-borrow on short gross (`annual_borrow_bps=100`).
 - Intraday execution, queue position, partial fills and venue selection are not modeled; ADV uses

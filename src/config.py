@@ -385,3 +385,23 @@ XGBOOST_PARAMS = {
     "objective": "reg:squarederror",
     "random_state": RANDOM_SEED,
 }
+
+# Significance / "how much could be luck" settings (see README).
+_SIGNIFICANCE = _PLATFORM.get("significance", {})
+SIGNIFICANCE_N_TRIALS = int(_SIGNIFICANCE.get("n_trials", 50))
+SIGNIFICANCE_N_TRIALS_SENSITIVITY = [
+    int(x) for x in _SIGNIFICANCE.get("n_trials_sensitivity", [15, 50, 100, 200])
+]
+SIGNIFICANCE_BOOTSTRAP_METHOD = str(_SIGNIFICANCE.get("bootstrap_method", "stationary")).strip().lower()
+SIGNIFICANCE_BOOTSTRAP_N_RESAMPLES = int(_SIGNIFICANCE.get("bootstrap_n_resamples", 5000))
+SIGNIFICANCE_BLOCK_LENGTH_MONTHLY = float(_SIGNIFICANCE.get("bootstrap_block_length_monthly", 4))
+SIGNIFICANCE_BLOCK_LENGTH_DAILY = float(_SIGNIFICANCE.get("bootstrap_block_length_daily", 13))
+SIGNIFICANCE_CONFIDENCE = float(_SIGNIFICANCE.get("bootstrap_confidence", 0.95))
+SIGNIFICANCE_SEED = int(_SIGNIFICANCE.get("bootstrap_seed", 42))
+SIGNIFICANCE_TRIAL_SHARPES = {
+    "walk_forward_ml": [float(x) for x in _SIGNIFICANCE.get("trial_sharpes_walk_forward", [])],
+    "multi_factor": [float(x) for x in _SIGNIFICANCE.get("trial_sharpes_multi_factor", [])],
+    "multi_day_sim": [float(x) for x in _SIGNIFICANCE.get("trial_sharpes_multi_day_sim", [])],
+}
+SIGNIFICANCE_REPORT_PATH = "results/significance_report.csv"
+WALK_FORWARD_PERIOD_RETURNS_PATH = "results/walk_forward_period_returns.csv"

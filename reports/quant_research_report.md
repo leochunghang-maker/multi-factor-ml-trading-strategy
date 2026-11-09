@@ -288,6 +288,26 @@ used to pick the default): `best` 0.63% / Sharpe 0.04 (same with flat inner borr
 comes from not switching on noise, not from new signal; a 57-month Sharpe of ~0.7 has a wide
 confidence interval (≈ ±0.9 at 95%).
 
+### Statistical Significance (regenerated 2026-11-09)
+
+From `results/significance_report.csv` (`src/run_significance_report.py`): stationary block
+bootstrap (5,000 resamples, seed 42, mean block 4 months / 13 days), Probabilistic Sharpe Ratio
+vs 0, and Deflated Sharpe Ratio with **N = 50 trials** (36 configurations recorded in the repo
+history, rounded up; see README) and cross-trial Sharpe variance from the reported Sharpes of
+each strategy family.
+
+| Series | T | Sharpe | 95% CI | PSR(0) | SR0 | DSR (N=50) | DSR (N=200) |
+|---|---:|---:|---|---:|---:|---:|---:|
+| Walk-forward ML | 57 m | 0.71 | [-0.21, 1.74] | 0.94 | 0.60 | 0.60 | 0.49 |
+| Multi-factor L/S | 93 m | 0.31 | [-0.35, 1.01] | 0.80 | 0.70 | 0.14 | 0.07 |
+| Multi-day sim (long-only) | 1968 d | 0.88 | [0.32, 1.50] | 0.99 | 0.11 | 0.98 (0.72 pooled V) | 0.98 (0.57 pooled V) |
+| Equal-weight universe buy-and-hold (reference) | 1968 d | 1.08 | [0.41, 1.86] | 1.00 | — | — | — |
+
+Neither long/short research strategy clears a DSR of 0.95: the walk-forward ML result is
+compatible with luck plus selection, and the multi-factor result shows no evidence of skill
+after deflation. The long-only simulation is "significant" only because it carries equity
+beta; it trails a naive equal-weight buy-and-hold of the same universe.
+
 ### Older narrative snapshot (not current)
 
 Earlier versions of this report quoted annual return **24.92%**, volatility **21.43%**,
@@ -337,6 +357,7 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 
 - From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **6.43% annual return**, **0.31 Sharpe**, **-42.40% max drawdown**, and **38.82% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
 - Walk-forward ML with the one-SE nested rule shows **11.62% annual return**, **0.71 Sharpe**, **-20.08% max drawdown**, **62.96% cumulative** over 2022-01-31 → 2026-09-30 (57 periods). Inner folds found no candidate significantly better than `rf_default`, so this is effectively the fixed production RF; argmax selection on the same inner scores gave **0.63% / 0.04**. Prior unscaled-inner EWMA (**10.17% / 0.62**), realized-vol targeting (**10.02% / 0.62**), sector-neutral-only (**6.34% / 0.37**), and older HTB-only / **23.1% / 0.88** figures are superseded.
+- Significance: walk-forward ML Sharpe 0.71 has a 95% block-bootstrap CI of [-0.21, 1.74] and Deflated Sharpe Ratio **0.60** at N = 50 trials; multi-factor DSR is **0.14**. Neither is statistically established; the long-only sim's high DSR reflects market beta (it trails equal-weight buy-and-hold, Sharpe 0.88 vs 1.08).
 - The architecture now separates data, features, models, portfolio construction, backtests, risk, and reporting into reusable modules.
 - Risk analytics add review context by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
 - The research remains a prototype until official S&P 100 PIT constituents (not only an S&P 500 proxy), more realistic trading costs, borrow assumptions, and production-grade data are added.
@@ -351,5 +372,5 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 - Extend capacity analysis beyond the 5% ADV participation trade cap (e.g. multi-day
   participation schedules, venue-level liquidity, and AUM stress at institutional size).
 - Add robust experiment tracking for model versions, features, parameters, and validation windows.
-- Quantify uncertainty of the walk-forward result (block-bootstrap Sharpe CI, deflated Sharpe for the number of variants tried); widen the nested candidate menu only with purge/embargo and the one-SE rule.
+- Pre-register the next research change (hypothesis, metric, N-trial increment) before running it, and add a beta-hedged / benchmark-relative significance test for the long-only simulation; widen the nested candidate menu only with purge/embargo and the one-SE rule.
 - Add production-quality data checks for stale prices, corporate actions, missing data, and symbol changes.

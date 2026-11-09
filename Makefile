@@ -1,4 +1,4 @@
-.PHONY: install test smoke signals paper dashboard report health
+.PHONY: install test smoke signals paper dashboard report health significance
 
 install:
 	pip install -r requirements.txt
@@ -23,3 +23,6 @@ report:
 
 health:
 	python src/operations/health.py
+
+significance:
+	python src/run_significance_report.py
