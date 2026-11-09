@@ -102,6 +102,24 @@ def download_benchmark_data(symbol: str = BENCHMARK_SYMBOL) -> pd.DataFrame:
     return close
 
 
+def report_changes_vs_manifest() -> None:
+    """After a download, flag files whose content differs from data/data_manifest.json.
+
+    Read-only: the manifest is only updated by ``python src/check_data.py --update-manifest``
+    after the new data has been reviewed.
+    """
+    from src.data.quality import check_manifest, data_check_settings
+
+    settings = data_check_settings()
+    findings = check_manifest(settings["manifest_path"], list(settings["manifest_files"]), settings)
+    if not findings:
+        print("Data manifest: downloaded files match the recorded hashes.")
+        return
+    for finding in findings:
+        print(f"{finding.severity} {finding.check} {finding.file}: {finding.message}")
+    print("Review with `python src/check_data.py --write-report` before `--update-manifest`.")
+
+
 if __name__ == "__main__":
     if "--benchmark-only" in sys.argv:
         download_benchmark_data()
@@ -109,3 +127,4 @@ if __name__ == "__main__":
         download_volume_data()
     else:
         download_price_data()
+    report_changes_vs_manifest()

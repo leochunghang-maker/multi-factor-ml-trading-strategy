@@ -111,6 +111,31 @@
     "structured_log_path": "results/operations/platform_events.jsonl",
     "metadata_dir": "results/operations/run_metadata"
   },
+  "data_checks": {
+    "max_stale_trading_days": 5,
+    "stale_severity": "WARNING",
+    "max_end_date_gap_trading_days": 0,
+    "max_missing_aligned_dates": 0,
+    "misalignment_severity": "ERROR",
+    "max_calendar_gap_days": 4,
+    "max_missing_cross_section_fraction": 0.5,
+    "flat_run_min_days": 5,
+    "large_move_threshold": 0.25,
+    "split_move_threshold": 0.4,
+    "split_ratio_tolerance": 0.03,
+    "manifest_path": "data/data_manifest.json",
+    "manifest_files": [
+      "data/price_data.csv",
+      "data/volume_data.csv",
+      "data/benchmark_prices.csv",
+      "data/sector_map.csv",
+      "data/universe_sp500_membership.csv",
+      "data/borrow_tier_overrides.csv"
+    ],
+    "hash_mismatch_severity": "WARNING",
+    "report_path": "reports/data_quality_report.md",
+    "note": "Freshness counts weekdays after the last date up to the as-of date (exchange holidays are not excluded, so it can overcount by a holiday). Misalignment compares price, volume and benchmark date ranges and index sets against price_data.csv. Hashes are SHA-256 of the file with CRLF normalised to LF; update the manifest only after reviewing a re-download (python src/check_data.py --update-manifest)."
+  },
   "significance": {
     "trial_log_path": "research/trial_log.csv",
     "trial_padding": 14,

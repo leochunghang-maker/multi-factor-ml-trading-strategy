@@ -1,0 +1,44 @@
+{
+  "description": "SHA-256 (CRLF\u2192LF) and shape of checked-in data inputs. Regenerate only after reviewing a re-download: python src/check_data.py --update-manifest",
+  "files": {
+    "data/benchmark_prices.csv": {
+      "columns": 2,
+      "first_date": "2018-01-02",
+      "last_date": "2026-10-30",
+      "rows": 2220,
+      "sha256": "e4132f7895c08c93afa96c48582388c4dd8c18201a574b98ada97437909fe6ce"
+    },
+    "data/borrow_tier_overrides.csv": {
+      "columns": 3,
+      "rows": 3,
+      "sha256": "689342a4038a06ff30cf95252aa07a9d7bdf080ee072ce95ff121c02d12ae322"
+    },
+    "data/price_data.csv": {
+      "columns": 102,
+      "first_date": "2018-01-02",
+      "last_date": "2026-10-30",
+      "rows": 2220,
+      "sha256": "02ead3e3652a6905ab09147d66f92aab817f534ef67c28a26d8306dc22d039c4"
+    },
+    "data/sector_map.csv": {
+      "columns": 2,
+      "rows": 101,
+      "sha256": "351ab80c97e21ef2b4dbd43001f87c704273ab9bf6f8427d3fec7d732d3a2c4b"
+    },
+    "data/universe_sp500_membership.csv": {
+      "columns": 2,
+      "first_date": "2017-01-27",
+      "last_date": "2026-11-01",
+      "rows": 10644,
+      "sha256": "a58df7029ac87641ed156103f5515d4230b1531d5505d634db3bd11c337a3266"
+    },
+    "data/volume_data.csv": {
+      "columns": 102,
+      "first_date": "2018-01-02",
+      "last_date": "2026-10-30",
+      "rows": 2220,
+      "sha256": "fd1fe5a5ac293ed61ce9126be451d982c47bbbe36bf170f576be76b1390dd5cb"
+    }
+  },
+  "updated": "2026-11-09"
+}

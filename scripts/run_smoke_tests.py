@@ -117,6 +117,35 @@ class SmokeTestRunner:
             "no local live-signal output found; run signal generation when market data is available",
         )
 
+    def check_data_inputs(self) -> None:
+        """Freshness, alignment, quality and manifest checks on data/ (read-only)."""
+        sys.path.insert(0, str(PROJECT_ROOT))
+        try:
+            from src.data.quality import overall_status, run_data_checks
+            from src.operations.configuration import load_platform_config
+
+            config = load_platform_config(
+                default_path=str(PROJECT_ROOT / "config" / "platform_config.json"),
+                local_path=str(PROJECT_ROOT / "config" / "platform_config.local.json"),
+            )
+            findings, summary = run_data_checks(config=config, root=PROJECT_ROOT)
+        except Exception as exc:  # pragma: no cover - diagnostic path
+            self.fail("Data checks", f"could not run: {exc}")
+            return
+        status = overall_status(findings)
+        counts = summary["counts"]
+        detail = (
+            f"{counts['ERROR']} error, {counts['WARNING']} warning, {counts['INFO']} info as of "
+            f"{summary['as_of']} (python src/check_data.py for details)"
+        )
+        if status == "ERROR":
+            errors = "; ".join(f"{f.file}: {f.message}" for f in findings if f.severity == "ERROR")
+            self.fail("Data checks", f"{detail}; {errors}")
+        elif status == "WARNING":
+            self.warning("Data checks", detail)
+        else:
+            self.pass_("Data checks", detail)
+
     def run_pytest_if_available(self) -> None:
         """Run pytest when installed; skip cleanly when unavailable."""
         pytest = shutil.which("pytest")
@@ -187,11 +216,13 @@ def main() -> int:
             PROJECT_ROOT / "src" / "generate_report.py",
             PROJECT_ROOT / "src" / "simulation" / "run_multi_day_simulation.py",
             PROJECT_ROOT / "dashboard" / "app.py",
+            PROJECT_ROOT / "src" / "check_data.py",
         ]
     )
     runner.check_latest_signals()
     runner.check_paths_exist("Reports folder", [PROJECT_ROOT / "reports"], "folders")
     runner.check_paths_exist("Dashboard app", [PROJECT_ROOT / "dashboard" / "app.py"], "files")
+    runner.check_data_inputs()
     runner.run_pytest_if_available()
     runner.print_summary()
     return runner.exit_code()

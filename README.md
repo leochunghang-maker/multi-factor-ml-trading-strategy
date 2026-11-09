@@ -206,7 +206,8 @@ paper trading, and dashboard review. They do not enable live-money trading.
 | `make paper` | Run the local simulated paper-trading workflow with data refresh skipped. |
 | `make dashboard` | Start the Streamlit dashboard. |
 | `make report` | Regenerate research and risk summary reports. |
-| `make health` | Run the operational health check. |
+| `make health` | Run the operational health check (includes the data checks below). |
+| `make data-check` | Data freshness, alignment, quality and manifest checks; writes `reports/data_quality_report.md`. |
 
 ## Paper Trading Workflow
 
@@ -698,6 +699,43 @@ Run the health monitor directly:
 ```bash
 python src/operations/health.py
 ```
+
+### Data checks (freshness, alignment, quality, manifest)
+
+`python src/check_data.py` (or `make data-check`, which also writes
+`reports/data_quality_report.md`) runs read-only checks on `data/price_data.csv`,
+`data/volume_data.csv` and `data/benchmark_prices.csv`; thresholds are in
+`config/platform_config.json` → `data_checks`. The same findings appear in `make health` and as a
+smoke-test line (FAIL on any ERROR, WARNING otherwise).
+
+- **Freshness:** last date more than `max_stale_trading_days = 5` weekdays before today (or
+  `--as-of`) → `stale_severity` (WARNING by default, because the checked-in data is a research
+  snapshot; set ERROR for a live paper-trading box). Exchange holidays are not excluded, so the
+  count can overstate staleness by a holiday.
+- **Alignment (ERROR):** volume and benchmark start/end dates and their date sets must match
+  `price_data.csv` exactly (`max_end_date_gap_trading_days = 0`, `max_missing_aligned_dates = 0`).
+- **Quality:** unparseable / duplicate / unsorted dates and non-positive prices or negative
+  volumes (ERROR); weekend dates, calendar gaps > 4 days, dates with > 50% of listed names missing,
+  NaN holes inside a name's listed history, all-NaN columns, histories ending early, ≥ 5 identical
+  consecutive closes, zero volume, and **split-like jumps** (|move| ≥ 40% with price ratio within
+  3% of 1/k or k, k ∈ {1.5, 2, 3, 4, 5, 8, 10, 20}) (WARNING); late listings and other moves ≥ 25%
+  (INFO, report only).
+- **Manifest:** `data/data_manifest.json` records SHA-256 (CRLF normalised to LF), rows,
+  columns and date range of the data inputs. Any difference is a WARNING;
+  `python src/data_loader.py` prints the comparison after every download. After reviewing a
+  re-download, run `make research` and then `python src/check_data.py --update-manifest`.
+  `tests/test_data_quality.py` fails if the checked-in data no longer match the manifest.
+
+Nothing in these checks modifies data. Findings on the current snapshot are in
+`reports/data_quality_report.md`.
+
+Findings on the checked-in snapshot (2018-01-02 → 2026-10-30, 2,220 rows): **no errors**;
+price, volume and SPY files are exactly aligned; no calendar gaps, holes inside listed histories,
+flat-price runs, zero volumes or split-like jumps. Warnings: the snapshot is 6 trading days old
+as of 2026-11-09, and **`BK` is an all-NaN column** in both price and volume files (failed
+Yahoo download; the eligibility mask already drops empty columns, so research runs on 100 names,
+but the file was not rewritten). INFO: UBER, PLTR and GEV start late (IPO / spin-off) and 15
+daily moves of 25–38% (none split-like; not verified against news).
 
 ## Known Limitations
 

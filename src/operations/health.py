@@ -52,24 +52,25 @@ def check_required_files(config: dict[str, Any]) -> list[HealthFinding]:
     return findings
 
 
-def check_stale_data(config: dict[str, Any]) -> list[HealthFinding]:
-    findings = []
-    max_days = config["risk_limits"]["max_data_staleness_days"]
-    prices = read_csv(PRICE_DATA_PATH, ["Date"])
-    date_column = "Date" if "Date" in prices.columns else prices.columns[0] if not prices.empty else None
-    if prices.empty or date_column is None:
-        return [HealthFinding("ERROR", "stale_data", "Price data is missing or unreadable.")]
-    latest = pd.to_datetime(prices[date_column], errors="coerce").max()
-    age_days = (pd.Timestamp.now(tz="UTC").normalize() - latest.tz_localize("UTC").normalize()).days
-    if age_days > max_days:
-        findings.append(
-            HealthFinding(
-                "WARNING",
-                "stale_data",
-                f"Latest price date {latest.date()} is {age_days} days old; limit is {max_days}.",
-            )
-        )
-    return findings
+def check_data_inputs(config: dict[str, Any], as_of=None) -> tuple[list[HealthFinding], dict[str, Any]]:
+    """Freshness (trading days), alignment, quality and manifest checks on the data inputs.
+
+    Thresholds: ``data_checks`` in the platform config (see ``src/data/quality.py``).
+    INFO findings stay in the data-quality report; ERROR/WARNING surface here.
+    """
+    from src.data.quality import overall_status, run_data_checks
+
+    try:
+        data_findings, summary = run_data_checks(as_of=as_of, config=config)
+    except Exception as exc:  # pragma: no cover - defensive: health must still render
+        return [HealthFinding("ERROR", "data_checks", f"Data checks failed to run: {exc}")], {}
+    findings = [
+        HealthFinding(f.severity, f"data_{f.check}", f"{f.file}: {f.message}")
+        for f in data_findings
+        if f.severity in ("ERROR", "WARNING")
+    ]
+    summary = {**summary, "status": overall_status(data_findings)}
+    return findings, summary
 
 
 def check_latest_snapshot(config: dict[str, Any]) -> tuple[list[HealthFinding], dict[str, Any]]:
@@ -160,7 +161,8 @@ def build_health_status() -> dict[str, Any]:
     config = load_platform_config()
     findings = []
     findings.extend(check_required_files(config))
-    findings.extend(check_stale_data(config))
+    data_findings, data_summary = check_data_inputs(config)
+    findings.extend(data_findings)
     snapshot_findings, latest_snapshot = check_latest_snapshot(config)
     findings.extend(snapshot_findings)
     concentration_findings, top_positions = check_concentration(config)
@@ -178,6 +180,7 @@ def build_health_status() -> dict[str, Any]:
             **load_optional_operational_tables(),
         },
         "latest_execution_status": execution_status,
+        "data_inputs": data_summary,
         "recent_structured_events": events,
     }
     return status
@@ -215,6 +218,11 @@ def save_system_status_report(status: dict[str, Any]) -> None:
         f"- Gross exposure: {float(portfolio.get('gross_exposure', 0.0)):.2%}",
         f"- Net exposure: {float(portfolio.get('net_exposure', 0.0)):.2%}",
         f"- Drawdown: {float(portfolio.get('drawdown', 0.0)):.2%}",
+        "",
+        "## Data Inputs",
+        "",
+        f"- Data checks: {status.get('data_inputs', {}).get('status', 'unavailable')} "
+        f"(as of {status.get('data_inputs', {}).get('as_of', 'n/a')}; details: `python src/check_data.py`)",
         "",
         "## Latest Execution Status",
         "",
