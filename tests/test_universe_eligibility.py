@@ -135,3 +135,29 @@ def test_checked_in_membership_file_covers_late_joiners() -> None:
     assert pltr.min() >= pd.Timestamp("2024-09-01")
     uber = membership.loc[membership["ticker"] == "UBER", "date"]
     assert uber.min() >= pd.Timestamp("2023-12-01")
+
+
+def _reference_membership_mask(index, tickers, membership):
+    # The original row-by-row as-of loop, kept as the reference.
+    mask = pd.DataFrame(False, index=pd.DatetimeIndex(index), columns=list(tickers))
+    grouped = {stamp: set(group["ticker"]) for stamp, group in membership.groupby("date")}
+    snapshot_dates = pd.DatetimeIndex(sorted(grouped))
+    for date in mask.index:
+        eligible = snapshot_dates[snapshot_dates <= date]
+        if len(eligible):
+            for ticker in tickers:
+                mask.at[date, ticker] = ticker in grouped[eligible[-1]]
+    return mask
+
+
+def test_vectorized_membership_mask_matches_reference_on_checked_in_data() -> None:
+    from src.config import PRICE_DATA_PATH
+
+    prices = pd.read_csv(PRICE_DATA_PATH, index_col=0, parse_dates=True)
+    membership = load_membership_table()
+    tickers = list(prices.columns)
+    index = prices.index[::5]  # every 5th day keeps the reference loop quick
+    fast = build_membership_mask(index, tickers, membership=membership)
+    pd.testing.assert_frame_equal(fast, _reference_membership_mask(index, tickers, membership))
+    early = pd.DatetimeIndex([membership["date"].min() - pd.Timedelta(days=1)])
+    assert not build_membership_mask(early, tickers, membership=membership).to_numpy().any()

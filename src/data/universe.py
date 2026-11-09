@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from src.config import (
@@ -128,21 +129,22 @@ def build_membership_mask(
     if membership.empty or mask.empty:
         return mask
 
-    # Snapshot sets keyed by membership date for fast as-of lookup.
+    # Snapshot sets keyed by membership date; each row takes the latest
+    # snapshot dated on or before it (as-of lookup, vectorized).
     grouped = {
         stamp: set(group["ticker"].map(normalize_ticker))
         for stamp, group in membership.groupby("date")
     }
     snapshot_dates = pd.DatetimeIndex(sorted(grouped))
-    for date in mask.index:
-        eligible_snapshots = snapshot_dates[snapshot_dates <= date]
-        if len(eligible_snapshots) == 0:
-            continue
-        members = grouped[eligible_snapshots[-1]]
-        for ticker in tickers:
-            if ticker in members:
-                mask.at[date, ticker] = True
-    return mask
+    snapshot_matrix = np.array(
+        [[ticker in grouped[stamp] for ticker in tickers] for stamp in snapshot_dates],
+        dtype=bool,
+    ).reshape(len(snapshot_dates), len(tickers))
+    position = snapshot_dates.searchsorted(mask.index, side="right") - 1
+    values = np.zeros(mask.shape, dtype=bool)
+    has_snapshot = position >= 0
+    values[has_snapshot] = snapshot_matrix[position[has_snapshot]]
+    return pd.DataFrame(values, index=mask.index, columns=mask.columns)
 
 
 def build_eligibility_mask(
