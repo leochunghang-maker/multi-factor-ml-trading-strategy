@@ -239,7 +239,17 @@ def constrain_weights(
             constraints.min_average_daily_dollar_volume,
         )
 
+    # Binding diagnostics (descriptive only): how much each step changed the
+    # book, measured on that step's own input, in application order.
+    binding: dict[str, float | int | bool] = {
+        "bind_liquidity_gross_removed": float(starting_gross - constrained.abs().sum()),
+        "bind_liquidity_held_names_removed": int(
+            ((target_weights.fillna(0.0) != 0) & (constrained == 0)).sum()
+        ),
+    }
+
     if daily_returns is not None:
+        before = constrained
         constrained = apply_volatility_adjusted_sizing(
             constrained,
             daily_returns,
@@ -247,15 +257,39 @@ def constrain_weights(
             constraints.target_volatility,
             constraints.volatility_lookback,
         )
+        binding["bind_vol_sizing_names_scaled"] = int((constrained.abs() < before.abs() - 1e-12).sum())
+        binding["bind_vol_sizing_gross_trimmed"] = float(before.abs().sum() - constrained.abs().sum())
 
+    before = constrained
     constrained = apply_max_position_size(constrained, constraints.max_position_weight)
+    binding["bind_position_names_clipped"] = int((constrained.abs() < before.abs() - 1e-12).sum())
+    binding["bind_position_gross_trimmed"] = float(before.abs().sum() - constrained.abs().sum())
+
+    before = constrained
     constrained = apply_sector_limits(
         constrained,
         constraints.max_sector_weight,
         constraints.sector_map,
     )
+    sectors = constraints.sector_map or SECTOR_MAP
+    sector_before = before.abs().groupby(lambda symbol: sectors.get(symbol, "Unknown")).sum()
+    binding["bind_sector_count_scaled"] = int((sector_before > constraints.max_sector_weight).sum())
+    binding["bind_sector_max_gross_before"] = float(sector_before.max()) if not sector_before.empty else 0.0
+    binding["bind_sector_gross_trimmed"] = float(before.abs().sum() - constrained.abs().sum())
+
+    before_gross = float(constrained.abs().sum())
     constrained = apply_gross_exposure_limit(constrained, constraints.max_gross_exposure)
+    binding["bind_gross_cap_gross_before"] = before_gross
+    binding["bind_gross_cap_gross_trimmed"] = float(before_gross - constrained.abs().sum())
+
+    before_gross = float(constrained.abs().sum())
     constrained = normalize_to_original_gross(constrained, starting_gross)
+    binding["bind_normalize_gross_trimmed"] = float(before_gross - constrained.abs().sum())
+
+    # Traded gross the book wanted before the turnover blend.
+    binding["bind_turnover_wanted_traded_gross"] = float(
+        (constrained - _align(previous_weights, constrained)).abs().sum()
+    )
     constrained, traded_gross, turnover_limited = apply_turnover_limit(
         constrained,
         previous_weights,
@@ -274,7 +308,9 @@ def constrain_weights(
             constraints.capacity_nav,
             constraints.max_adv_participation,
         )
+        traded_before_capacity = traded_gross
         traded_gross = (constrained - _align(previous_weights, constrained)).abs().sum()
+        binding["bind_capacity_traded_trimmed"] = float(traded_before_capacity - traded_gross)
 
     cost = constraints.cost_model.estimate_cost(traded_gross)
     diagnostics = {
@@ -293,6 +329,7 @@ def constrain_weights(
         "estimated_transaction_cost": cost,
         "transaction_cost_bps": constraints.cost_model.transaction_cost_bps,
         "slippage_bps": constraints.cost_model.slippage_bps,
+        **binding,
     }
     return constrained, diagnostics
 

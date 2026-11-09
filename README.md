@@ -792,6 +792,9 @@ The reporting layer produces:
 - Sector exposure reports.
 - Turnover reports.
 - Risk constraint summaries.
+- Paper-constraint binding report (`reports/paper_constraint_binding_report.md`): how often and by
+  how much each guardrail (liquidity, volatility sizing, position, sector, gross, turnover, ADV
+  participation) binds on the reported multi-factor book. Descriptive only.
 - ML baseline comparison and prediction stability reports.
 - Monthly return heatmap.
 - Paper-trading and multi-day simulation status reports.
@@ -924,8 +927,10 @@ daily moves of 25–38% (none split-like; not verified against news).
   the rebalance day's own volume in its 63-day window.
 - Liquidity filtering uses `data/volume_data.csv` (Yahoo share volume). With it, the 63-day ADV
   filter (`MIN_AVERAGE_DAILY_DOLLAR_VOLUME = $25M`) is active on all 93 month-end rebalances
-  (2019-01-31 → 2026-09-30); names below the threshold were flagged on 62 rebalances (max 3
-  names). Constrained gross after renormalisation is unchanged (mean 0.9246).
+  (2019-01-31 → 2026-09-30); universe names below the threshold were flagged on 62 rebalances
+  (max 3 names), none of them held by the reported book. How often each guardrail binds on the
+  reported book, and by how much, is in
+  [`reports/paper_constraint_binding_report.md`](reports/paper_constraint_binding_report.md).
 - **Capacity / ADV participation**: `risk_limits.max_adv_participation` (default **5%**) caps
   each name's rebalance trade so `|Δw| * NAV ≤ participation * 63-day ADV$`. Research constraint
   diagnostics use `simulation.starting_capital` as the NAV scale; paper/sim uses live portfolio

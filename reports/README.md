@@ -6,6 +6,8 @@ This folder contains lightweight Markdown report snapshots that are useful for G
 - `paper_trading_status.md`: latest local paper-trading operating status.
 - `multi_day_simulation_report.md`: latest multi-day paper simulation summary.
 - `system_status.md`: latest operational health snapshot.
+- `paper_constraint_binding_report.md`: how often and by how much the paper guardrails bind on the
+  reported multi-factor book (`make report`; `tests/test_constraint_binding.py` fails if stale).
 
 - `data_quality_report.md`: data freshness / alignment / quality findings (`make data-check`).
 

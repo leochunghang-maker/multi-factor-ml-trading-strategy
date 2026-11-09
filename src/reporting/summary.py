@@ -6,6 +6,8 @@ import pandas as pd
 from src.backtests.benchmark import load_benchmark_returns
 from src.config import (
     BENCHMARK_SYMBOL,
+    CONSTRAINT_BINDING_CSV_PATH,
+    CONSTRAINT_BINDING_REPORT_PATH,
     DAILY_RETURNS_PATH,
     FEATURES,
     FEATURE_STABILITY_REPORT_PATH,
@@ -46,6 +48,7 @@ from src.models.validation import (
 )
 from src.backtests.factor_backtests import build_reported_multi_factor_book
 from src.portfolio import constrain_weight_history
+from src.reporting.constraint_binding import save_binding_report
 from src.portfolio.constraints import load_optional_volume_data
 from src.reporting.analytics import (
     concentration_limit_report,
@@ -178,6 +181,13 @@ def save_portfolio_constraint_reports(weights: pd.DataFrame) -> pd.DataFrame:
         "constrained_gross_limit_breach"
     ]
     risk_summary.to_csv(RISK_CONSTRAINT_SUMMARY_PATH)
+    save_binding_report(
+        diagnostics,
+        weights,
+        constrained_weights,
+        CONSTRAINT_BINDING_CSV_PATH,
+        CONSTRAINT_BINDING_REPORT_PATH,
+    )
 
     # Preserve earlier report filenames for compatibility with the existing
     # project while adding the explicit institutional report names requested.
