@@ -1,6 +1,5 @@
 from .portfolio import (
     build_factor_long_short_returns,
-    build_multi_factor_long_short_weights,
     build_multi_factor_long_short_returns,
     build_prediction_long_short_returns,
     long_short_return_from_scores,

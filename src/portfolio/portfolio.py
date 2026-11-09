@@ -388,46 +388,6 @@ def build_factor_long_short_returns(
     return results
 
 
-def build_multi_factor_long_short_weights(
-    momentum: pd.DataFrame,
-    mean_reversion: pd.DataFrame,
-    forward_returns: pd.DataFrame,
-    long_count: int,
-    short_count: int,
-    min_assets: int,
-    eligibility: pd.DataFrame | None = None,
-) -> pd.DataFrame:
-    portfolio_weights = []
-    monthly_dates = month_end_trading_dates(momentum)
-
-    for date in monthly_dates:
-        mom = momentum.loc[date]
-        mr = mean_reversion.loc[date]
-        future_returns = forward_returns.loc[date]
-        eligible = _eligible_on_date(eligibility, date, mom.index)
-        valid = mom.notna() & mr.notna() & future_returns.notna() & eligible
-
-        if valid.sum() >= min_assets:
-            mom = mom[valid]
-            mr = mr[valid]
-
-            # Use the same composite score as the multi-factor backtest so
-            # turnover analytics describe the actual reported strategy.
-            mom_z = (mom - mom.mean()) / mom.std()
-            mr_z = (mr - mr.mean()) / mr.std()
-            composite_score = mom_z - mr_z
-
-            weights = equal_weight_long_short_weights(
-                composite_score,
-                long_count,
-                short_count,
-            )
-            weights.name = date
-            portfolio_weights.append(weights)
-
-    return pd.DataFrame(portfolio_weights).fillna(0.0)
-
-
 def build_prediction_long_short_returns(
     predictions: pd.DataFrame,
     score_column: str,
