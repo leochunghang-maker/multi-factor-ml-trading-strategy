@@ -9,15 +9,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.backtests.factor_backtests import build_reported_multi_factor_book
 from src.config import FORWARD_RETURNS_PATH, MULTI_FACTOR_RESULTS_PATH
 from src.reporting.analytics import turnover_series, turnover_statistics
 from src.reporting.doc_metrics import expected_metrics, pct
 
 
-@pytest.fixture(scope="module")
-def book():
-    return build_reported_multi_factor_book()
+@pytest.fixture
+def book(reported_book):
+    return reported_book  # built once per session in tests/conftest.py
 
 
 def test_rebuilt_book_reproduces_committed_results(book) -> None:

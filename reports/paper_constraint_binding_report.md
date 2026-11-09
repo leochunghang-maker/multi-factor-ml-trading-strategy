@@ -36,3 +36,14 @@ There is no net-exposure limit in `PortfolioConstraints`; net is shown for refer
 
 The paper-constrained book ends every rebalance within the position, sector gross and
 gross caps, including after the turnover blend.
+
+## Effect of the per-name volatility-sizing step
+
+The same guardrails run twice on the same proposed book: as configured, and with the
+per-name volatility-sizing step skipped (counterfactual for description only; nothing
+uses it). The proposed book is already volatility-targeted at the portfolio level.
+
+| Guardrails | Gross into gross cap (mean) | Final gross mean (min–max) | Final net mean | Largest name / sector gross (mean) | Rebalances where position / sector / gross / turnover cap binds | Residual position / sector / gross breaches |
+|---|---:|---:|---:|---:|---:|---:|
+| with per-name vol sizing (current) | 99.7% | 84.5% (26.7%–99.9%) | -3.6% | 6.7% / 24.8% | 35 / 40 / 47 / 75 | 0 / 0 / 0 |
+| without per-name vol sizing | 137.9% | 94.0% (57.5%–100.0%) | -2.8% | 6.1% / 24.1% | 44 / 87 / 82 / 87 | 0 / 0 / 0 |

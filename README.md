@@ -794,7 +794,8 @@ The reporting layer produces:
 - Risk constraint summaries.
 - Paper-constraint binding report (`reports/paper_constraint_binding_report.md`): how often and by
   how much each guardrail (liquidity, volatility sizing, position, sector, gross, turnover, ADV
-  participation) binds on the reported multi-factor book. Descriptive only.
+  participation) binds on the reported multi-factor book, and the same guardrails with the
+  per-name volatility-sizing step skipped. Descriptive only.
 - ML baseline comparison and prediction stability reports.
 - Monthly return heatmap.
 - Paper-trading and multi-day simulation status reports.

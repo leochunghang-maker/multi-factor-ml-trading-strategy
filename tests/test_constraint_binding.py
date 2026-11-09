@@ -5,9 +5,14 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.config import CONSTRAINT_BINDING_REPORT_PATH, DAILY_RETURNS_PATH, PRICE_DATA_PATH, VOLUME_DATA_PATH
-from src.portfolio import PortfolioConstraints, constrain_weight_history, constrain_weights
-from src.reporting.constraint_binding import binding_summary, exposure_comparison, render_markdown
+from src.config import CONSTRAINT_BINDING_REPORT_PATH
+from src.portfolio import PortfolioConstraints, constrain_weights
+from src.reporting.constraint_binding import (
+    binding_summary,
+    exposure_comparison,
+    render_markdown,
+    vol_sizing_comparison,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SECTORS = {"A": "Tech", "B": "Tech", "C": "Tech", "D": "Energy", "E": "Energy"}
@@ -48,19 +53,21 @@ def test_sector_gross_and_turnover_binding_amounts() -> None:
     assert d["bind_sector_gross_trimmed"] == pytest.approx(0.15)
 
 
-def test_checked_in_binding_report_matches_the_reported_book() -> None:
-    from src.backtests.factor_backtests import build_reported_multi_factor_book
-    from src.data.io import load_price_data
-    from src.portfolio.constraints import load_optional_volume_data
-    from src.reporting.summary import load_factor_frame
-
-    _, weights = build_reported_multi_factor_book()
-    constrained, diagnostics = constrain_weight_history(
-        weights,
-        daily_returns=load_factor_frame(DAILY_RETURNS_PATH),
-        prices=load_price_data(PRICE_DATA_PATH),
-        volumes=load_optional_volume_data(VOLUME_DATA_PATH),
-    )
-    expected = render_markdown(binding_summary(diagnostics), exposure_comparison(weights, constrained), diagnostics)
+def test_checked_in_binding_report_matches_the_reported_book(reported_book, reported_book_constrained) -> None:
+    _, weights = reported_book
+    constrained, diagnostics = reported_book_constrained["with_vol"]
+    comparison = vol_sizing_comparison(
+        (constrained, diagnostics), reported_book_constrained["without_vol"], weights)
+    expected = render_markdown(
+        binding_summary(diagnostics), exposure_comparison(weights, constrained), diagnostics, comparison)
     checked_in = (ROOT / CONSTRAINT_BINDING_REPORT_PATH).read_text()
     assert checked_in == expected, "stale: run `make report` and commit reports/paper_constraint_binding_report.md"
+
+
+def test_vol_sizing_counterfactual_changes_only_that_step(reported_book, reported_book_constrained) -> None:
+    _, with_diag = reported_book_constrained["with_vol"]
+    without_weights, without_diag = reported_book_constrained["without_vol"]
+    assert "bind_vol_sizing_gross_trimmed" in with_diag and "bind_vol_sizing_gross_trimmed" not in without_diag
+    # Skipping vol sizing feeds more gross into the later caps, never less.
+    assert (without_diag["bind_gross_cap_gross_before"] >= with_diag["bind_gross_cap_gross_before"] - 1e-12).all()
+    assert (without_weights.abs().sum(axis=1) <= 1.0 + 1e-9).all()

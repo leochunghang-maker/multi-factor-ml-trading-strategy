@@ -129,7 +129,50 @@ def exposure_comparison(
     return pd.DataFrame(rows).set_index("book")
 
 
-def render_markdown(summary: pd.DataFrame, exposures: pd.DataFrame, diagnostics: pd.DataFrame) -> str:
+def vol_sizing_comparison(
+    with_vol: tuple[pd.DataFrame, pd.DataFrame],
+    without_vol: tuple[pd.DataFrame, pd.DataFrame],
+    proposed: pd.DataFrame,
+    constraints: PortfolioConstraints | None = None,
+) -> pd.DataFrame:
+    """Same guardrails with and without the per-name volatility-sizing step.
+
+    Each argument pair is ``(constrained_weights, diagnostics)`` from
+    ``constrain_weight_history`` (without = ``daily_returns=None``). Counts are
+    rebalances where a cap changed the book on its input, then residual
+    breaches after every step.
+    """
+    rows = {}
+    for label, (weights, diagnostics) in (
+        ("with per-name vol sizing (current)", with_vol),
+        ("without per-name vol sizing", without_vol),
+    ):
+        steps = binding_summary(diagnostics, constraints).set_index("constraint")["binding_rebalances"]
+        exposure = exposure_comparison(proposed, weights, constraints=constraints).loc["paper-constrained"]
+        gross_in = diagnostics["bind_gross_cap_gross_before"]
+        rows[label] = {
+            "gross_into_gross_cap_mean": float(gross_in.mean()),
+            "gross_mean": exposure["gross_mean"], "gross_min": exposure["gross_min"],
+            "gross_max": exposure["gross_max"], "net_mean": exposure["net_mean"],
+            "largest_name_mean": exposure["largest_name_mean"],
+            "largest_sector_gross_mean": exposure["largest_sector_gross_mean"],
+            "position_cap_binds": int(steps["Position cap"]),
+            "sector_cap_binds": int(steps["Sector gross cap"]),
+            "gross_cap_binds": int(steps["Gross cap"]),
+            "turnover_cap_binds": int(steps["Turnover cap"]),
+            "position_cap_breaches": int(exposure["position_cap_breaches"]),
+            "sector_cap_breaches": int(exposure["sector_cap_breaches"]),
+            "gross_cap_breaches": int(exposure["gross_cap_breaches"]),
+        }
+    return pd.DataFrame(rows).T
+
+
+def render_markdown(
+    summary: pd.DataFrame,
+    exposures: pd.DataFrame,
+    diagnostics: pd.DataFrame,
+    vol_comparison: pd.DataFrame | None = None,
+) -> str:
     start, end = diagnostics.index.min(), diagnostics.index.max()
     n = len(diagnostics)
     lines = [
@@ -189,6 +232,27 @@ def render_markdown(summary: pd.DataFrame, exposures: pd.DataFrame, diagnostics:
             "gross caps, including after the turnover blend.",
         ]
     lines.append("")
+    if vol_comparison is not None:
+        lines += [
+            "## Effect of the per-name volatility-sizing step",
+            "",
+            "The same guardrails run twice on the same proposed book: as configured, and with the",
+            "per-name volatility-sizing step skipped (counterfactual for description only; nothing",
+            "uses it). The proposed book is already volatility-targeted at the portfolio level.",
+            "",
+            "| Guardrails | Gross into gross cap (mean) | Final gross mean (min–max) | Final net mean | Largest name / sector gross (mean) | Rebalances where position / sector / gross / turnover cap binds | Residual position / sector / gross breaches |",
+            "|---|---:|---:|---:|---:|---:|---:|",
+        ]
+        for label, r in vol_comparison.iterrows():
+            lines.append(
+                f"| {label} | {r['gross_into_gross_cap_mean']:.1%} | "
+                f"{r['gross_mean']:.1%} ({r['gross_min']:.1%}–{r['gross_max']:.1%}) | {r['net_mean']:.1%} | "
+                f"{r['largest_name_mean']:.1%} / {r['largest_sector_gross_mean']:.1%} | "
+                f"{int(r['position_cap_binds'])} / {int(r['sector_cap_binds'])} / {int(r['gross_cap_binds'])} / "
+                f"{int(r['turnover_cap_binds'])} | "
+                f"{int(r['position_cap_breaches'])} / {int(r['sector_cap_breaches'])} / {int(r['gross_cap_breaches'])} |"
+            )
+        lines.append("")
     return "\n".join(lines)
 
 
@@ -198,10 +262,15 @@ def save_binding_report(
     constrained: pd.DataFrame,
     csv_path: str | Path,
     markdown_path: str | Path,
+    without_vol_sizing: tuple[pd.DataFrame, pd.DataFrame] | None = None,
 ) -> pd.DataFrame:
     summary = binding_summary(diagnostics)
     exposures = exposure_comparison(proposed, constrained)
     Path(csv_path).parent.mkdir(parents=True, exist_ok=True)
+    comparison = None
+    if without_vol_sizing is not None:
+        comparison = vol_sizing_comparison((constrained, diagnostics), without_vol_sizing, proposed)
+        comparison.to_csv(Path(csv_path).with_name("constraint_binding_vol_sizing.csv"))
     summary.to_csv(csv_path, index=False)
-    Path(markdown_path).write_text(render_markdown(summary, exposures, diagnostics))
+    Path(markdown_path).write_text(render_markdown(summary, exposures, diagnostics, comparison))
     return summary

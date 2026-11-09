@@ -181,12 +181,20 @@ def save_portfolio_constraint_reports(weights: pd.DataFrame) -> pd.DataFrame:
         "constrained_gross_limit_breach"
     ]
     risk_summary.to_csv(RISK_CONSTRAINT_SUMMARY_PATH)
+    # Descriptive counterfactual: the same guardrails without per-name vol sizing.
+    without_vol_sizing = constrain_weight_history(
+        weights,
+        daily_returns=None,
+        prices=prices,
+        volumes=volumes,
+    )
     save_binding_report(
         diagnostics,
         weights,
         constrained_weights,
         CONSTRAINT_BINDING_CSV_PATH,
         CONSTRAINT_BINDING_REPORT_PATH,
+        without_vol_sizing=without_vol_sizing,
     )
 
     # Preserve earlier report filenames for compatibility with the existing
