@@ -129,6 +129,7 @@ def run_walk_forward_ml_backtest(
                 "chosen_model": meta["chosen_model"],
                 "selection_mode": meta["selection_mode"],
                 "score_metric": meta["score_metric"],
+                "inner_vol_targeting": meta["inner_vol_targeting"],
                 "n_train_rows": meta["n_train_rows"],
                 "train_start": meta["train_start"],
                 "train_end": meta["train_end"],
@@ -139,6 +140,7 @@ def run_walk_forward_ml_backtest(
                 flat[f"ic_{name}"] = score_row["mean_inner_rank_ic"]
                 flat[f"icir_{name}"] = score_row["inner_icir"]
                 flat[f"cost_sharpe_{name}"] = score_row["inner_cost_aware_sharpe"]
+                flat[f"vol_scale_{name}"] = score_row["mean_inner_vol_scale"]
             selection_rows.append(flat)
         else:
             model = train_random_forest(train_df[FEATURES], train_df[TARGET])

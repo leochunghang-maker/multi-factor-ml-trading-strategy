@@ -9,12 +9,23 @@ Inner scoring (configurable via ``NESTED_INNER_SCORE`` / ``score_metric``):
   subtracting (i) turnover × ``transaction_cost`` and (ii) stock-borrow /
   financing on the signed weight book. Formula per month-end date t:
 
-      gross_t = side * (mean(r_long) - mean(r_short))
+      gross_t = sum_i w_{i,t} * r_{i,t}
       net_t   = gross_t - |w_t - w_{t-1}|_1 * c - financing(w_t)
       score   = mean(net) / std(net) * sqrt(periods_per_year)
 
-  with ``side = gross_exposure / 2``. This tracks tradable quality better than
+  with base side gross ``gross_exposure / 2`` per leg before scaling. This tracks tradable quality better than
   raw IC alone while staying fast on the month-end subset.
+
+  Inner books use the same construction as the outer research portfolio:
+  sector-demeaned ranking plus sector net-exposure caps (``SECTOR_NEUTRAL`` /
+  ``MAX_SECTOR_NET_EXPOSURE``), and — when ``NESTED_INNER_VOL_TARGETING`` and
+  ``VOL_TARGETING_ENABLED`` are on — causal vol-target scaling of base gross:
+
+      scale_t = clip(target_vol / forecast_vol(net_{<t}), min, max)
+      gross_t = sum_i scale_t * w_{i,t} * r_{i,t}
+
+  where ``net_{<t}`` are the candidate's own earlier inner-validation net
+  returns (inner-train information only; the outer test fold is never seen).
 """
 
 from __future__ import annotations
@@ -38,11 +49,13 @@ from src.config import (
     ML_LONG_COUNT,
     ML_SHORT_COUNT,
     NESTED_INNER_SCORE,
+    NESTED_INNER_VOL_TARGETING,
     PERIODS_PER_YEAR,
     RANDOM_FOREST_PARAMS,
     RANDOM_SEED,
     RESEARCH_LONG_SHORT_GROSS_EXPOSURE,
     TRANSACTION_COST,
+    VOL_TARGETING_ENABLED,
 )
 from src.execution.financing import financing_cost_from_weights
 from src.models.validation import (
@@ -55,6 +68,7 @@ from src.portfolio.portfolio import (
     equal_weight_long_short_weights,
     transaction_cost_from_weight_change,
 )
+from src.risk.volatility import scale_weights, volatility_target_scale
 
 SUPPORTED_INNER_SCORES = ("rank_ic", "icir", "cost_aware_sharpe")
 
@@ -144,8 +158,15 @@ def net_long_short_period_return(
     annual_short_rebate_bps: float,
     annual_cash_financing_bps: float,
     periods_per_year: float,
+    vol_scale: float = 1.0,
 ) -> tuple[float, pd.Series]:
-    """One rebalance's net L/S return after turnover costs and financing."""
+    """One rebalance's net L/S return after turnover costs and financing.
+
+    Weights come from the same sector-aware equal-weight constructor as the
+    outer book, are multiplied by ``vol_scale`` (computed by the caller from
+    *past* returns only), and gross P&L is ``sum(w * r)`` so sector-cap
+    reweighting and vol scaling flow through returns, turnover and financing.
+    """
     aligned = pd.concat(
         [scores.rename("score"), realized_returns.rename("ret")],
         axis=1,
@@ -159,13 +180,13 @@ def net_long_short_period_return(
         short_count=short_count,
         gross_exposure=gross_exposure,
     )
-    side = gross_exposure / 2.0
+    weights = scale_weights(weights, vol_scale)
     long_idx = weights[weights > 0].index
     short_idx = weights[weights < 0].index
     if long_idx.empty or short_idx.empty:
         return float("nan"), weights
 
-    gross = side * (aligned.loc[long_idx, "ret"].mean() - aligned.loc[short_idx, "ret"].mean())
+    gross = float((weights * aligned["ret"].reindex(weights.index).fillna(0.0)).sum())
     trade_cost, _ = transaction_cost_from_weight_change(weights, previous_weights, transaction_cost)
     financing = financing_cost_from_weights(
         weights,
@@ -196,8 +217,18 @@ def collect_inner_fold_diagnostics(
     annual_short_rebate_bps: float = ANNUAL_SHORT_REBATE_BPS,
     annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS,
     periods_per_year: float = PERIODS_PER_YEAR,
+    vol_targeting: bool | None = None,
 ) -> dict[str, list[float]]:
-    """Pool per-date ICs and cost-aware net L/S returns across inner folds."""
+    """Pool per-date ICs and cost-aware net L/S returns across inner folds.
+
+    Inner validation years are consecutive, so the candidate's net-return
+    history is a single causal series used for vol-target scaling. It starts
+    empty for every candidate and only ever contains inner-validation dates
+    that precede the date being sized.
+    """
+    use_vol = (
+        NESTED_INNER_VOL_TARGETING if vol_targeting is None else bool(vol_targeting)
+    ) and VOL_TARGETING_ENABLED
     frame = month_end_subset(train_df) if use_month_end_subset else train_df
     splits = inner_anchored_year_splits(
         frame["date"],
@@ -207,6 +238,7 @@ def collect_inner_fold_diagnostics(
     )
     ics: list[float] = []
     net_returns: list[float] = []
+    vol_scales: list[float] = []
     previous_weights: pd.Series | None = None
 
     for split in splits:
@@ -248,6 +280,9 @@ def collect_inner_fold_diagnostics(
             if np.isfinite(ic):
                 ics.append(ic)
 
+            vol_scale = (
+                volatility_target_scale(net_returns, enabled=True) if use_vol else 1.0
+            )
             net, previous_weights = net_long_short_period_return(
                 scores,
                 targets,
@@ -260,11 +295,13 @@ def collect_inner_fold_diagnostics(
                 annual_short_rebate_bps=annual_short_rebate_bps,
                 annual_cash_financing_bps=annual_cash_financing_bps,
                 periods_per_year=periods_per_year,
+                vol_scale=vol_scale,
             )
             if np.isfinite(net):
                 net_returns.append(net)
+                vol_scales.append(float(vol_scale))
 
-    return {"ics": ics, "net_returns": net_returns}
+    return {"ics": ics, "net_returns": net_returns, "vol_scales": vol_scales}
 
 
 def summarize_inner_score(
@@ -302,6 +339,7 @@ def score_candidate_on_inner_folds(
     score_metric: str = NESTED_INNER_SCORE,
     long_count: int = ML_LONG_COUNT,
     short_count: int = ML_SHORT_COUNT,
+    vol_targeting: bool | None = None,
 ) -> float:
     """Scalar inner score for one candidate (NaN if no usable diagnostics)."""
     diagnostics = collect_inner_fold_diagnostics(
@@ -316,6 +354,7 @@ def score_candidate_on_inner_folds(
         use_month_end_subset=use_month_end_subset,
         long_count=long_count,
         short_count=short_count,
+        vol_targeting=vol_targeting,
     )
     return summarize_inner_score(diagnostics, score_metric)
 
@@ -335,6 +374,7 @@ def select_model_nested(
     score_metric: str | None = None,
     long_count: int = ML_LONG_COUNT,
     short_count: int = ML_SHORT_COUNT,
+    vol_targeting: bool | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """Choose a candidate using only ``train_df``, then refit on all of it."""
     candidates = deepcopy(candidates or default_nested_candidates())
@@ -356,6 +396,7 @@ def select_model_nested(
             use_month_end_subset=use_month_end_subset,
             long_count=long_count,
             short_count=short_count,
+            vol_targeting=vol_targeting,
         )
         score = summarize_inner_score(diagnostics, metric)
         score_rows.append({
@@ -366,6 +407,11 @@ def select_model_nested(
             "inner_cost_aware_sharpe": aggregate_sharpe(diagnostics["net_returns"]),
             "n_inner_ic_dates": len(diagnostics["ics"]),
             "n_inner_return_dates": len(diagnostics["net_returns"]),
+            "mean_inner_vol_scale": (
+                float(np.mean(diagnostics["vol_scales"]))
+                if diagnostics.get("vol_scales")
+                else float("nan")
+            ),
         })
 
     finite = [row for row in score_rows if np.isfinite(row["inner_score"])]
@@ -386,6 +432,10 @@ def select_model_nested(
         "chosen_model": best_name,
         "selection_mode": selection_mode,
         "score_metric": metric,
+        "inner_vol_targeting": bool(
+            (NESTED_INNER_VOL_TARGETING if vol_targeting is None else vol_targeting)
+            and VOL_TARGETING_ENABLED
+        ),
         "candidate_scores": score_rows,
         "n_train_rows": int(len(train_df)),
         "train_start": str(pd.to_datetime(train_df["date"]).min().date()) if len(train_df) else None,

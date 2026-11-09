@@ -254,6 +254,7 @@ NESTED_WALK_FORWARD = bool(_RESEARCH.get("nested_walk_forward", True))
 NESTED_MIN_TRAIN_YEARS = int(_RESEARCH.get("nested_min_train_years", 2))
 NESTED_USE_MONTH_END_SUBSET = bool(_RESEARCH.get("nested_use_month_end_subset", True))
 NESTED_INNER_SCORE = str(_RESEARCH.get("nested_inner_score", "cost_aware_sharpe"))
+NESTED_INNER_VOL_TARGETING = bool(_RESEARCH.get("nested_inner_vol_targeting", True))
 NESTED_SELECTION_REPORT_PATH = "results/reports/nested_model_selection.csv"
 SECTOR_NEUTRAL = bool(_RESEARCH.get("sector_neutral", True))
 MAX_SECTOR_NET_EXPOSURE = float(_RESEARCH.get("max_sector_net_exposure", 0.15))

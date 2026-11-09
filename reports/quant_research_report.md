@@ -10,10 +10,11 @@ eligibility, HTB borrow tiers, sector-neutral construction, and **EWMA volatilit
 targeting**: annual return **6.43%**, annual volatility **20.88%**, Sharpe ratio
 **0.31**, maximum drawdown **-42.40%**, and cumulative return **38.82%** (ending
 wealth **1.3882**). Walk-forward metrics in `results/walk_forward_metrics.csv`:
-annual return **10.17%**, Sharpe **0.62**, max drawdown **-15.41%**, cumulative
-**52.11%** over 57 periods. Older narrative snapshots (multi-factor Sharpe **1.16** /
+annual return **0.63%**, Sharpe **0.04**, max drawdown **-22.46%**, cumulative
+**-4.18%** over 57 periods, after nested inner scoring was made consistent with the outer
+book (sector-capped weights + causal vol scaling). Older narrative snapshots (multi-factor Sharpe **1.16** /
 **0.39** / **0.23** / **0.26** / **0.30**, walk-forward **0.88** / **0.70** / **0.63** /
-**0.37** / realized-vol **0.62**) are superseded.
+**0.37** / realized-vol **0.62** / EWMA with unscaled inner scoring **0.62**) are superseded.
 
 The results are research outputs from a prototype workflow and should be interpreted with realistic caveats: the base ticker list is still a modern S&P 100-style snapshot (residual survivorship), eligibility uses an S&P 500 membership proxy rather than official S&P 100 PIT constituents, prices come from Yahoo Finance, transaction costs are simplified, and execution assumptions are idealized. They are not investment promises or live-trading claims.
 
@@ -152,12 +153,17 @@ before predicting the outer test year.
 Default inner score (`research.nested_inner_score=cost_aware_sharpe`):
 
 `score = mean(net_t) / std(net_t) * sqrt(12)`, where each month-end
-`net_t = side*(mean r_long - mean r_short) - ||Δw||_1 * transaction_cost - financing(w_t)`
-and financing uses the configured stock-borrow / rebate / cash-financing bps. Alternatives:
-`icir = mean(IC)/std(IC)`, `rank_ic = mean(IC)`.
+`net_t = sum_i s_t·w_{i,t}·r_{i,t} - ||Δ(s·w)||_1 * transaction_cost - financing(s_t·w_t)`,
+where `w_t` comes from the same sector-demeaned, sector-net-capped constructor as the outer
+book and `s_t = clip(target_vol / EWMA_forecast(net_{<t}), 0.5, 1.5)` uses only the candidate's
+earlier inner-validation net returns (`research.nested_inner_vol_targeting`, default true;
+false sets `s_t = 1`). Financing uses the configured stock-borrow / rebate / cash-financing bps.
+Alternatives: `icir = mean(IC)/std(IC)`, `rank_ic = mean(IC)`.
 
-Regenerated 2026-11-06 with `cost_aware_sharpe`: **2022–2026 chose `rf_default`** (under raw
-`rank_ic`, 2023–2026 had preferred `ridge_1`). This reduces test-year hyperparameter peeking
+Regenerated 2026-11-09 with consistent `cost_aware_sharpe`: **2022–2025 chose `ridge_1`,
+2026 chose `rf_shallow`** (the previous unscaled scorer chose 2022–2023=`rf_shallow`,
+2024–2026=`rf_default`). Inner scores are mostly negative and tightly clustered, so model
+choice is fragile and the outer result is sensitive to it. This reduces test-year hyperparameter peeking
 but does not eliminate candidate-menu or research-iteration bias.
 
 ### Survivorship Bias
@@ -201,7 +207,8 @@ periods (`lambda = 0.5^(1/half_life)`); `vol_estimator=realized` keeps the trail
 sample stdev over `vol_lookback_periods=6`. Target 15%, scale clipped to [0.5, 1.5].
 Only returns *before* the rebalance date enter the estimate (no look-ahead).
 Paper/sim defaults to EWMA with half-life 21 daily NAV returns and
-`vol_max_scale=1.0` (no leverage). Nested inner scoring still uses unscaled base gross.
+`vol_max_scale=1.0` (no leverage). Nested inner `cost_aware_sharpe` applies the same causal
+vol scale (from inner-validation history only) and sector-capped weights as the outer book.
 
 ### Sector Neutrality
 Research L/S construction demeans cross-sectional scores within each sector and then caps
@@ -251,16 +258,20 @@ Source of truth for the multi-factor backtest in this repository checkout:
 
 From `results/walk_forward_metrics.csv`, with month-end rebalancing, purge/embargo, research
 L/S base gross 2.0, PIT eligibility, HTB tiers, sector neutrality, **EWMA vol targeting**, and
-nested `cost_aware_sharpe`. Nested choices: 2022–2023=`rf_shallow`, 2024–2026=`rf_default`.
+nested `cost_aware_sharpe` (inner books consistent with the outer book). Nested choices:
+2022–2025=`ridge_1`, 2026=`rf_shallow`. Mean research vol scale ≈ 0.94.
 Sample: **2022-01-31 → 2026-09-30** (57 periods).
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 10.17% |
-| Annual volatility | 16.43% |
-| Sharpe ratio | 0.62 |
-| Max drawdown | -15.41% |
-| Cumulative return | 52.11% |
+| Annual return | 0.63% |
+| Annual volatility | 17.73% |
+| Sharpe ratio | 0.04 |
+| Max drawdown | -22.46% |
+| Cumulative return | -4.18% |
+
+Previous snapshot with unscaled inner scoring: 10.17% / 16.43% vol / Sharpe 0.62 / -15.41% /
++52.11% (superseded). With `nested_inner_vol_targeting: false`: 2.26% / Sharpe 0.13 / -22.46%.
 
 ### Older narrative snapshot (not current)
 
@@ -310,7 +321,7 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 ## Key Findings
 
 - From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **6.43% annual return**, **0.31 Sharpe**, **-42.40% max drawdown**, and **38.82% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
-- EWMA vol-targeted + sector-neutral walk-forward ML shows **10.17% annual return**, **0.62 Sharpe**, **-15.41% max drawdown**, **52.11% cumulative** over 2022-01-31 → 2026-09-30 (57 periods); prior realized-vol targeting (**10.02% / 0.62**), sector-neutral-only (**6.34% / 0.37**), and older HTB-only / **23.1% / 0.88** figures are superseded.
+- Walk-forward ML with nested inner scoring consistent with the outer book shows **0.63% annual return**, **0.04 Sharpe**, **-22.46% max drawdown**, **-4.18% cumulative** over 2022-01-31 → 2026-09-30 (57 periods). The ML edge does not survive consistent, cost-aware model selection; prior unscaled-inner EWMA (**10.17% / 0.62**), realized-vol targeting (**10.02% / 0.62**), sector-neutral-only (**6.34% / 0.37**), and older HTB-only / **23.1% / 0.88** figures are superseded.
 - The architecture now separates data, features, models, portfolio construction, backtests, risk, and reporting into reusable modules.
 - Risk analytics add review context by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
 - The research remains a prototype until official S&P 100 PIT constituents (not only an S&P 500 proxy), more realistic trading costs, borrow assumptions, and production-grade data are added.
@@ -325,5 +336,5 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 - Extend capacity analysis beyond the 5% ADV participation trade cap (e.g. multi-day
   participation schedules, venue-level liquidity, and AUM stress at institutional size).
 - Add robust experiment tracking for model versions, features, parameters, and validation windows.
-- Widen the nested candidate menu carefully (still with purge/embargo) or add cost-aware inner scoring beyond rank IC.
+- Stabilize nested selection (e.g. shrink toward a default model when inner scores are within noise, or ensemble candidates) and use name-level HTB borrow in inner scoring; widen the candidate menu only with purge/embargo.
 - Add production-quality data checks for stale prices, corporate actions, missing data, and symbol changes.

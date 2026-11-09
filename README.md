@@ -282,7 +282,11 @@ apply to both outer and inner folds.
 Default **inner score** is `cost_aware_sharpe` (`research.nested_inner_score`): annualized Sharpe
 of equal-weight long/short month-end returns after `turnover × transaction_cost` and stock-borrow /
 financing on the signed weight book. Alternatives: `icir` = mean(IC)/std(IC), and legacy
-`rank_ic`. This reduces hyperparameter peeking into the test year; it does **not** remove bias
+`rank_ic`. Inner books use the **same construction as the outer research book**: sector-demeaned
+ranking, sector net caps, gross P&L as `sum(w·r)` on those capped weights, and (with
+`research.nested_inner_vol_targeting: true`, default) the same causal EWMA vol-target scale,
+estimated only from each candidate's *earlier* inner-validation net returns — never the outer
+test fold. This reduces hyperparameter peeking into the test year; it does **not** remove bias
 from the candidate menu itself or from repeated research iteration. Selection log:
 `results/reports/nested_model_selection.csv`. Disable with `research.nested_walk_forward: false`.
 
@@ -352,21 +356,31 @@ These are research outputs from the current committed backtest series, not forwa
 claims. Interpret them with the limitations below (residual survivorship bias, static sector map,
 simplified transaction costs, idealized execution).
 
-### Walk-forward ML (regenerated 2026-11-06, EWMA vol targeting + sector-neutral + nested + HTB)
+### Walk-forward ML (regenerated 2026-11-09, nested inner scoring consistent with outer book)
 
 From `results/walk_forward_metrics.csv`, regenerated with month-end rebalancing, purge/embargo,
 research L/S gross 2.0 (base, before vol scale), PIT eligibility, HTB tiers, sector neutrality,
-**EWMA vol targeting**, and nested `cost_aware_sharpe`. Nested choices: **2022–2023=`rf_shallow`**,
-**2024–2026=`rf_default`**. Distinct from paper `MAX_GROSS_EXPOSURE=1.0`.
-Sample: **2022-01-31 → 2026-09-30** (57 periods). Mean research vol scale ≈ **1.01**.
+**EWMA vol targeting**, and nested `cost_aware_sharpe` whose inner books now use the same
+sector-capped weights and causal vol scaling as the outer book. Nested choices:
+**2022–2025=`ridge_1`**, **2026=`rf_shallow`**. Distinct from paper `MAX_GROSS_EXPOSURE=1.0`.
+Sample: **2022-01-31 → 2026-09-30** (57 periods). Mean research vol scale ≈ **0.94**.
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 10.17% |
-| Annual volatility | 16.43% |
-| Sharpe ratio | 0.62 |
-| Max drawdown | -15.41% |
-| Cumulative return | 52.11% |
+| Annual return | 0.63% |
+| Annual volatility | 17.73% |
+| Sharpe ratio | 0.04 |
+| Max drawdown | -22.46% |
+| Cumulative return | -4.18% |
+
+This is a large, honest decline versus the previous **10.17% / Sharpe 0.62 / -15.41% MDD /
++52.11%** snapshot, which scored inner candidates with an unscaled equal-weight spread that
+ignored sector-cap reweighting. Inner scores are mostly negative and close together (see
+`results/reports/nested_model_selection.csv`), so the choice between candidates is fragile;
+the consistent scorer prefers `ridge_1`, which underperformed out of sample. With
+`nested_inner_vol_targeting: false` (sector-consistent `sum(w·r)` but no inner vol scale) the
+run gives 2.26% / Sharpe 0.13 / -22.46% MDD. The old 0.62 figure is **not** a better choice —
+picking the inner scorer by its outer-test result would itself be test-set selection.
 
 
 ### Older narrative snapshot (not reproduced by current artifacts)
@@ -537,7 +551,8 @@ python src/operations/health.py
   Target 15%, scale clipped to [0.5, 1.5]. Only returns *before* the rebalance enter the
   estimate (no look-ahead). Paper/sim defaults to EWMA with half-life 21 daily NAV returns
   (`risk_limits.vol_ewma_half_life`) and `vol_max_scale=1.0` (no leverage). Nested inner
-  scoring still uses unscaled base gross.
+  `cost_aware_sharpe` applies the same causal vol scale and sector-capped weights
+  (`research.nested_inner_vol_targeting`).
 - Nested walk-forward reduces hyperparameter peeking into each outer test year, but the candidate
   menu is still researcher-chosen and repeated research iteration can still overfit the process.
 - Walk-forward validation is stronger than a static split, but it does not remove all model-selection

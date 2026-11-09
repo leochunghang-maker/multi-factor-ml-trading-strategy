@@ -21,6 +21,8 @@
     "nested_use_month_end_subset": true,
     "nested_note": "Each outer year fold selects among a small candidate set using anchored inner year folds on purged training data only (month-end subset for speed). Default inner score is cost_aware_sharpe: annualized Sharpe of equal-weight L/S period returns after turnover*transaction_cost and stock-borrow/financing. Alternatives: icir, rank_ic. Does not eliminate candidate-menu bias.",
     "nested_inner_score": "cost_aware_sharpe",
+    "nested_inner_vol_targeting": true,
+    "nested_inner_vol_note": "When true (and vol_targeting_enabled), cost_aware_sharpe inner books apply the same causal EWMA/realized vol-target scale as the outer research book, estimated only from each candidate's earlier inner-validation net returns. Inner books also use the outer sector-neutral construction and sector net caps.",
     "sector_neutral": true,
     "max_sector_net_exposure": 0.15,
     "sector_map_path": "data/sector_map.csv",
