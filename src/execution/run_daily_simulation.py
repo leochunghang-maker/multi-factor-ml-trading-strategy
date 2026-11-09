@@ -226,7 +226,71 @@ def build_rebalance_orders(
             f"expected_cash_weight={allocation_diagnostics['expected_cash_weight']:.4f}"
         ),
     })
+    # Sells come first so their proceeds are in cash before any buy is
+    # validated (same order as the multi-day simulation). Without this, exits
+    # appended after the buys left the buys short of cash and they were
+    # rejected. The sort is stable, so order within each side is unchanged.
+    orders = sorted(orders, key=lambda order: 0 if order.side == "SELL" else 1)
     return orders, execution_logs, target_weights, allocation_diagnostics
+
+
+def execute_rebalance_orders(
+    broker: SimulatedBroker,
+    orders: list[SimulatedOrder],
+    prices: dict[str, float],
+    timestamp: str,
+) -> dict:
+    """Execute one rebalance: all sells first, then buys sized from cash after sells.
+
+    Buys are scaled down pro rata (``SimulatedBroker.fit_buys_to_cash``) only
+    when the allocation and fill buffers already in the targets are not enough,
+    so cash never goes negative and a buy is not rejected merely because exits
+    had not filled yet. Invalid orders are still rejected and logged.
+    """
+    trades: list[dict] = []
+    rejected: list[dict] = []
+    submitted: list[SimulatedOrder] = []
+    traded_notional = 0.0
+    order_adv_clips = 0
+
+    def execute(order: SimulatedOrder) -> None:
+        nonlocal traded_notional, order_adv_clips
+        submitted.append(order)
+        if broker.clip_order_to_adv_participation(order).quantity < order.quantity - 1e-12:
+            order_adv_clips += 1
+        try:
+            # Order execution updates cash and positions immediately in the
+            # simulated account. Invalid orders are rejected and logged.
+            trade = broker.process_order(order, timestamp, prices=prices)
+            trades.append(trade)
+            traded_notional += trade["notional"]
+        except ValueError as exc:
+            rejected.append({
+                "timestamp": timestamp,
+                "symbol": order.symbol,
+                "side": order.side,
+                "quantity": order.quantity,
+                "price": order.price,
+                "status": "REJECTED",
+                "message": str(exc),
+            })
+
+    for order in orders:
+        if order.side != "BUY":
+            execute(order)
+    cash_after_sells = broker.cash
+    buy_orders, buy_scale = broker.fit_buys_to_cash([order for order in orders if order.side == "BUY"])
+    for order in buy_orders:
+        execute(order)
+    return {
+        "trades": trades,
+        "rejected": rejected,
+        "submitted": submitted,
+        "traded_notional": traded_notional,
+        "order_adv_clips": order_adv_clips,
+        "buy_scale": buy_scale,
+        "cash_after_sells": cash_after_sells,
+    }
 
 
 def calculate_daily_performance(
@@ -381,9 +445,25 @@ def run_daily_simulation(price_path: str = PRICE_DATA_PATH, volume_path: str = V
             ),
         })
 
-    trade_rows = []
-    rejected_rows = []
-    traded_notional = 0.0
+    execution = execute_rebalance_orders(broker, orders, prices, run_timestamp)
+    trade_rows = execution["trades"]
+    rejected_rows = execution["rejected"]
+    traded_notional = execution["traded_notional"]
+    order_adv_clips = execution["order_adv_clips"]
+    submitted_orders = execution["submitted"]
+    if execution["buy_scale"] < 1.0:
+        warnings.append(
+            f"BUYS_SCALED_TO_CASH: buy orders scaled by {execution['buy_scale']:.4f} to fit cash after sells."
+        )
+        execution_logs.append({
+            "timestamp": run_timestamp,
+            "symbol": "PORTFOLIO",
+            "event": "BUYS_SCALED_TO_CASH",
+            "message": (
+                f"scale={execution['buy_scale']:.6f}, "
+                f"cash_after_sells={execution['cash_after_sells']:.2f}"
+            ),
+        })
 
     order_rows = [
         {
@@ -394,28 +474,8 @@ def run_daily_simulation(price_path: str = PRICE_DATA_PATH, volume_path: str = V
             "decision_price": order.price,
             "reason": order.reason,
         }
-        for order in orders
+        for order in submitted_orders
     ]
-    order_adv_clips = 0
-    for order in orders:
-        if broker.clip_order_to_adv_participation(order).quantity < order.quantity - 1e-12:
-            order_adv_clips += 1
-        try:
-            # Order execution updates cash and positions immediately in the
-            # simulated account. Invalid orders are rejected and logged.
-            trade = broker.process_order(order, run_timestamp, prices=prices)
-            trade_rows.append(trade)
-            traded_notional += trade["notional"]
-        except ValueError as exc:
-            rejected_rows.append({
-                "timestamp": run_timestamp,
-                "symbol": order.symbol,
-                "side": order.side,
-                "quantity": order.quantity,
-                "price": order.price,
-                "status": "REJECTED",
-                "message": str(exc),
-            })
 
     ending_value = broker.portfolio_value(prices)
     pnl = ending_value - starting_value

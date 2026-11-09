@@ -67,7 +67,10 @@ Rejected orders are not automatically bad. In this project, they often mean a sa
 Common examples:
 
 - `Insufficient cash`: the simulated broker blocked a buy because the account did not have enough
-  cash.
+  cash. Each rebalance executes all sells first and then sizes the buys from the cash on hand after
+  those sells (scaled down pro rata, with a `BUYS_SCALED_TO_CASH` warning, only if the allocation
+  and fill buffers are not enough), so this should no longer appear merely because exits had not
+  filled yet.
 - `Order would breach max position weight`: the simulated broker blocked a trade because it would
   exceed the configured position limit.
 - Missing or stale price: the order should not proceed because the system cannot value the trade

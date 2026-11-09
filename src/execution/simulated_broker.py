@@ -257,6 +257,50 @@ class SimulatedBroker:
         }
 
 
+    def buy_cash_required(self, order: SimulatedOrder) -> float:
+        """Cash a BUY would consume (fill notional plus commission) after ADV clipping."""
+        order = self.clip_order_to_adv_participation(order)
+        notional = order.quantity * self.estimate_fill_price(order)
+        return notional * (1 + self.transaction_cost_rate)
+
+    def fit_buys_to_cash(self, orders: list[SimulatedOrder]) -> tuple[list[SimulatedOrder], float]:
+        """Scale BUY orders pro rata so together they fit the cash on hand.
+
+        Call after the rebalance's sells have filled, so buys are sized from
+        cash after sells. Targets already carry the allocation buffer and the
+        per-buy fill buffer; this only binds when those are not enough (e.g.
+        sell proceeds below the estimate). Scaling uses the ADV-clipped
+        quantity and a smaller order has lower impact, so the scaled buys
+        never need more cash than ``self.cash``. Returns (orders, scale).
+        SELL orders pass through unchanged.
+        """
+        buys = [self.clip_order_to_adv_participation(o) for o in orders if o.side == "BUY"]
+        required = sum(self.buy_cash_required(o) for o in buys)
+        if required <= 0 or required <= self.cash:
+            return list(orders), 1.0
+        scale = max(0.0, self.cash) / required * (1 - 1e-9)
+        fitted = []
+        clipped = iter(buys)
+        for order in orders:
+            if order.side != "BUY":
+                fitted.append(order)
+                continue
+            base = next(clipped)
+            if scale <= 0:
+                continue
+            reason = order.reason or ""
+            suffix = "scaled to cash after sells"
+            if suffix not in reason:
+                reason = f"{reason}; {suffix}".strip("; ").strip()
+            fitted.append(SimulatedOrder(
+                symbol=base.symbol,
+                side="BUY",
+                quantity=base.quantity * scale,
+                price=base.price,
+                reason=reason,
+            ))
+        return fitted, scale
+
     def short_market_value(self, prices: dict[str, float]) -> float:
         """Absolute dollar value of short positions (0 for the long-only paper book)."""
         total = 0.0
