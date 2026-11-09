@@ -205,12 +205,24 @@ def report_changes_vs_manifest(paths: DataPaths | None = None) -> None:
     print("Review with `python src/check_data.py --write-report` before `--update-manifest`.")
 
 
-def resolve_end_date(value: str | None) -> str:
-    """``None`` → config END_DATE; ``today`` → tomorrow (yfinance end is exclusive)."""
+def resolve_end_date(value: str | None, now=None) -> str:
+    """``None`` → config END_DATE; ``today`` → the day after the last *closed* NYSE session.
+
+    yfinance's end is exclusive. "today" means the latest session whose New York close
+    plus ``data_checks.session_settle_minutes`` has passed, so a refresh during US market
+    hours (e.g. a morning run in Hong Kong is still the previous US evening, an evening
+    run is mid-session) never downloads a partial intraday bar as a close.
+    """
     if value is None:
         return END_DATE
     if value.lower() == "today":
-        return (pd.Timestamp.today().normalize() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        from src.data.market_calendar import last_completed_session
+        from src.data.quality import data_check_settings
+
+        settings = data_check_settings()
+        last = last_completed_session(now, str(settings.get("calendar", "NYSE")),
+                                      int(settings.get("session_settle_minutes", 30)))
+        return (last + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     return pd.Timestamp(value).strftime("%Y-%m-%d")
 
 

@@ -333,8 +333,12 @@ def paper_data_gate(
     config: dict[str, Any] | None = None,
     root: str | Path = ".",
     data_paths=None,
+    now=None,
 ) -> dict[str, Any]:
     """Data checks with paper severities: staleness is ``paper_stale_severity`` (ERROR).
+
+    Without ``as_of`` (the daily run) freshness is measured against the last closed
+    NYSE session and a partial intraday bar (a row dated after it) is an ERROR.
 
     ``data_paths`` is the paper data dir (``DataPaths.paper()``); its dated inputs are
     checked against its own manifest. ``None`` checks the research ``data/`` files.
@@ -351,11 +355,14 @@ def paper_data_gate(
         **paper_config,
         "data_checks": {**settings, "stale_severity": settings.get("paper_stale_severity", "ERROR")},
     }
-    findings, summary = run_data_checks(as_of=as_of, config=paper_config, root=root, data_paths=data_paths)
+    findings, summary = run_data_checks(
+        as_of=as_of, config=paper_config, root=root, data_paths=data_paths, now=now
+    )
     errors = [f"{f.file}: {f.message}" for f in findings if f.severity == "ERROR"]
     return {
         "checked_at": _now(),
         "as_of": summary["as_of"],
+        "last_closed_session": summary.get("last_closed_session"),
         "calendar": summary.get("calendar"),
         "data_dir": summary.get("data_dir"),
         "files": summary.get("files"),

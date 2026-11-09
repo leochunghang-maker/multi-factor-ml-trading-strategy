@@ -5,12 +5,19 @@ Rule-based, dependency-free: regular holidays follow NYSE Rule 7.2 observance
 observed), plus a checked-in list of one-off closures. Early closes (half days)
 are trading days and are not modelled. Verified against the checked-in price
 history (2018-01-02 .. 2026-10-30) in tests/test_market_calendar.py.
+
+``last_completed_session`` maps a wall-clock instant to the latest session whose
+regular close (16:00 America/New_York) plus a settle buffer has passed. Early
+closes are treated as 16:00 closes, which only delays a half day's bar. Paper
+refreshes and the data gate use it so a run during US market hours never treats a
+partial intraday bar as that day's close.
 """
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from functools import lru_cache
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -30,6 +37,9 @@ SPECIAL_CLOSURES = {
 }
 
 CALENDARS = ("NYSE", "weekdays")
+
+EXCHANGE_TZ = ZoneInfo("America/New_York")
+REGULAR_CLOSE = time(16, 0)
 
 
 def easter_sunday(year: int) -> date:
@@ -117,3 +127,30 @@ def trading_days(start, end, calendar: str = "NYSE") -> pd.DatetimeIndex:
     days = pd.bdate_range(start, end)
     closed = set(holidays_between(start, end, calendar))
     return pd.DatetimeIndex([d for d in days if d.date() not in closed])
+
+
+def previous_trading_day(day, calendar: str = "NYSE") -> pd.Timestamp:
+    """The last trading day strictly before ``day``."""
+    d = pd.Timestamp(day).date() - timedelta(days=1)
+    while not is_trading_day(d, calendar):
+        d -= timedelta(days=1)
+    return pd.Timestamp(d)
+
+
+def last_completed_session(now=None, calendar: str = "NYSE", settle_minutes: int = 30) -> pd.Timestamp:
+    """Latest trading day whose 16:00 New York close + ``settle_minutes`` is at or before ``now``.
+
+    ``now`` is a timezone-aware datetime/Timestamp (naive values are read as UTC);
+    default is the current wall clock. The date is taken in New York, so a run from
+    Hong Kong at 01:00 on Tuesday (12:00 Monday in New York) returns the previous
+    session, not Monday or Tuesday.
+    """
+    stamp = pd.Timestamp(now if now is not None else datetime.now(UTC))
+    if stamp.tzinfo is None:
+        stamp = stamp.tz_localize("UTC")
+    local = stamp.tz_convert(EXCHANGE_TZ)
+    today = local.date()
+    cutoff = datetime.combine(today, REGULAR_CLOSE, tzinfo=EXCHANGE_TZ) + timedelta(minutes=int(settle_minutes))
+    if is_trading_day(today, calendar) and local.to_pydatetime() >= cutoff:
+        return pd.Timestamp(today)
+    return previous_trading_day(today, calendar)

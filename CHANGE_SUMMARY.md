@@ -57,6 +57,11 @@ trading is local and simulated only. There is no live-money execution path.
 - **Tracking check:** each run is compared with a frictionless backtest of the same signals
   (holding gap, cost ratio, weight deviation). Thresholds were fixed a priori. Breaches raise
   alerts and appear in status and the weekly review (`754bdc3`).
+- **Closed sessions only:** the paper refresh downloads through the last NYSE session whose
+  New York close + 30 min has passed, and the data gate blocks any row dated after it. A run
+  during US market hours used to trade and mark the book at a partial intraday bar and then skip
+  the after-close rerun for that date. Freshness is measured from the last closed session in New
+  York time instead of the local date. Research numbers are unaffected.
 - **Rebalance bug fix:** sells now execute before buys, and buys are sized from the cash left
   after the sells. Before this, exits listed after the buys caused insufficient-cash rejections
   (`5102ebe`). No checked-in number changed.

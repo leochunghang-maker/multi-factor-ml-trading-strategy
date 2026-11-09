@@ -27,9 +27,10 @@ python scripts/run_daily_paper_trading.py
 The workflow performs:
 
 1. data refresh into the paper data dir `data/paper/` (`src/data_loader.py --paper`: prices, volume
-   and SPY through today plus a paper manifest; skip with `--skip-data-refresh`),
-2. pre-run data gate on `data/paper/` (staleness in NYSE trading days and any other data ERROR
-   block the run; exit code 2),
+   and SPY through the last closed NYSE session, i.e. 16:00 New York + 30 min settle, plus a paper
+   manifest; skip with `--skip-data-refresh`),
+2. pre-run data gate on `data/paper/` (staleness in NYSE trading days, a partial intraday bar dated
+   after the last closed session, and any other data ERROR block the run; exit code 2),
 3. idempotency check (a completed signal date is skipped; `--force` replaces the latest run),
 4. feature generation (factor files and ML dataset written to `data/paper/`),
 5. signal generation (from the gated paper prices and paper ML dataset),

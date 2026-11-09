@@ -48,6 +48,8 @@ DEFAULT_DATA_CHECKS: dict[str, Any] = {
     "hash_mismatch_severity": "WARNING",
     "excluded_symbols": {},
     "paper_stale_severity": "ERROR",
+    "session_settle_minutes": 30,
+    "incomplete_session_severity": "ERROR",
     "report_path": "reports/data_quality_report.md",
 }
 
@@ -104,6 +106,36 @@ def trading_days_between(start, end, calendar: str = "NYSE") -> int:
 
 
 # -------------------------------------------------------------------- freshness
+
+
+def check_incomplete_session(
+    frames: dict[str, pd.DataFrame | None],
+    last_session,
+    settings: dict[str, Any],
+) -> list[DataFinding]:
+    """Rows dated after ``last_session`` (the latest closed session) are partial intraday bars.
+
+    A download during US market hours returns today's bar with the last traded price
+    in the Close column. Treating it as a close would fill and mark the paper book at
+    an intraday price, and the run would then be keyed (and skipped on rerun) by that
+    date. Severity ``incomplete_session_severity`` (ERROR blocks the paper run).
+    """
+    last_session = pd.Timestamp(last_session).normalize()
+    severity = str(settings.get("incomplete_session_severity", "ERROR"))
+    findings: list[DataFinding] = []
+    for name, frame in frames.items():
+        if frame is None or frame.empty:
+            continue
+        ahead = pd.DatetimeIndex(frame.index)[pd.DatetimeIndex(frame.index) > last_session]
+        if len(ahead):
+            findings.append(DataFinding(
+                severity, "incomplete_session", name,
+                f"has {len(ahead)} row(s) dated after the last closed session {last_session.date()} "
+                f"(first {ahead.min().date()}); a download before the New York close + "
+                f"{settings.get('session_settle_minutes', 30)} min is a partial intraday bar. "
+                "Re-run the paper refresh after the close",
+            ))
+    return findings
 
 
 def check_freshness(
@@ -432,20 +464,35 @@ def run_data_checks(
     config: dict[str, Any] | None = None,
     root: str | Path = ".",
     data_paths=None,
+    now=None,
 ) -> tuple[list[DataFinding], dict[str, Any]]:
     """All freshness, alignment, quality and manifest checks. Returns findings + summary.
 
     ``data_paths`` (a ``src.data.paths.DataPaths``) checks another data root, e.g.
     the paper directory: its three dated inputs against its own manifest.
+
+    Without ``as_of`` the checks run against the wall clock (or ``now``): ``as_of``
+    is the last *closed* NYSE session in New York time, not the local calendar date,
+    and rows dated after it are flagged as partial intraday bars. An explicit
+    ``as_of`` (a backdated or offline check) skips the intraday check unless ``now``
+    is also given.
     """
     settings = data_check_settings(config)
     if data_paths is not None:
         settings = paper_manifest_settings(settings, data_paths)
     inputs = data_paths.dated_inputs() if data_paths is not None else DATED_INPUTS
     root = Path(root)
-    as_of = pd.Timestamp(as_of or date.today()).normalize()
+    from src.data.market_calendar import last_completed_session
+
+    calendar = str(settings.get("calendar", "NYSE"))
+    settle = int(settings.get("session_settle_minutes", 30))
+    wall_clock = as_of is None or now is not None
+    last_session = last_completed_session(now, calendar, settle) if wall_clock else None
+    as_of = pd.Timestamp(as_of if as_of is not None else last_session).normalize()
     frames = {name: load_dated_csv(root / path) for name, path in inputs.items()}
     findings: list[DataFinding] = []
+    if last_session is not None:
+        findings += check_incomplete_session(frames, last_session, settings)
     findings += check_freshness(frames, as_of, settings)
     findings += check_panel_quality(frames["price_data"], "price_data", settings, kind="price")
     findings += check_panel_quality(frames["volume_data"], "volume_data", settings, kind="volume")
@@ -454,6 +501,7 @@ def run_data_checks(
     findings += check_manifest(settings["manifest_path"], list(settings["manifest_files"]), settings, root=root)
     summary = {
         "as_of": str(as_of.date()),
+        "last_closed_session": str(last_session.date()) if last_session is not None else None,
         "calendar": str(settings.get("calendar", "NYSE")),
         "data_dir": str(data_paths.root) if data_paths is not None else "data",
         "files": {

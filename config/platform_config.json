@@ -114,6 +114,8 @@
   "data_checks": {
     "max_stale_trading_days": 5,
     "calendar": "NYSE",
+    "session_settle_minutes": 30,
+    "incomplete_session_severity": "ERROR",
     "stale_severity": "WARNING",
     "max_end_date_gap_trading_days": 0,
     "max_missing_aligned_dates": 0,

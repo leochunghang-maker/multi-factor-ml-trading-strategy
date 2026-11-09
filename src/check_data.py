@@ -80,7 +80,9 @@ def render_report(findings, summary, settings) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--as-of", default=None, help="Date for freshness checks (default: today).")
+    parser.add_argument("--as-of", default=None,
+                        help="Date for freshness checks (default: the last closed NYSE session in New York "
+                             "time, which also flags rows dated after it as partial intraday bars).")
     parser.add_argument("--write-report", action="store_true", help="Write the markdown report.")
     parser.add_argument("--update-manifest", action="store_true",
                         help="Record current SHA-256 hashes in the data manifest (review data first).")

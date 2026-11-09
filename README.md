@@ -292,7 +292,7 @@ python scripts/run_daily_paper_trading.py --skip-data-refresh
 
 | Safeguard | Behaviour |
 |---|---|
-| Pre-run data gate | Runs the data checks with staleness raised to **ERROR** (`data_checks.paper_stale_severity`); any data ERROR blocks the run before features/signals/orders, prints the reasons and exits with code 2. `make data-check`, `make health` and research keep staleness at WARNING. `--as-of YYYY-MM-DD` sets the freshness reference date (default today). |
+| Pre-run data gate | Runs the data checks with staleness raised to **ERROR** (`data_checks.paper_stale_severity`); any data ERROR blocks the run before features/signals/orders, prints the reasons and exits with code 2. `make data-check`, `make health` and research keep staleness at WARNING. `--as-of YYYY-MM-DD` sets the freshness reference date (default: the last closed NYSE session in New York time). Without `--as-of`, a row dated after that session (a partial intraday bar from a refresh during US market hours) is an ERROR (`data_checks.incomplete_session_severity`). |
 | Idempotency | The key is the signal date (latest local price date). A rerun for a completed date logs `already completed …; skipping` and trades nothing. `--force` replaces only the most recent run: its pre-run state is restored first, so the day is re-simulated once, not stacked. Dates older than the latest completed run are refused. Any failure restores `results/simulation/*` and leaves no run folder. |
 | Dated snapshot | `results/paper/runs/<signal date>/`: `run.json` (metadata, NAV, data-gate and reconciliation results), `start_state.json` / `end_state.json` (cash + positions), `positions_start.csv` / `positions_end.csv`, `orders.csv`, `fills.csv`, `rejected.csv`, and `pre_run_state/` (copy of the simulation files used by `--force`). Written to a staging folder and moved into place atomically. |
 | Reconciliation | Before trading: starting cash/positions must equal the previous run's `end_state.json`, and the previous `start_state.json` + `fills.csv` must reproduce that end state (cash ± $0.01, quantity ± 1e-6). A mismatch blocks the run (override: `--allow-reconciliation-mismatch`) and is an **ERROR** in `make health` (`paper_reconciliation`) until a clean run. After trading the same replay checks the new run. |
@@ -851,8 +851,8 @@ python src/operations/health.py
 `config/platform_config.json` → `data_checks`. The same findings appear in `make health` and as a
 smoke-test line (FAIL on any ERROR, WARNING otherwise).
 
-- **Freshness:** last date more than `max_stale_trading_days = 5` NYSE trading days before today
-  (or `--as-of`) → `stale_severity` (WARNING by default, because the checked-in data is a research
+- **Freshness:** last date more than `max_stale_trading_days = 5` NYSE trading days before the
+  last closed NYSE session (or `--as-of`) → `stale_severity` (WARNING by default, because the checked-in data is a research
   snapshot). The daily paper runner uses `paper_stale_severity` (ERROR) instead and blocks on any
   data ERROR. Trading days come from `data_checks.calendar = "NYSE"`
   (`src/data/market_calendar.py`): weekends, the ten regular NYSE holidays with NYSE observance
@@ -862,6 +862,15 @@ smoke-test line (FAIL on any ERROR, WARNING otherwise).
   price history (2018-01-02 → 2026-10-30). `"weekdays"` restores plain weekday counting.
   `python src/check_data.py --paper` runs the same checks on `data/paper/` against its own
   manifest.
+- **Closed sessions only:** "today" means the latest NYSE session whose 16:00 New York close
+  plus `data_checks.session_settle_minutes = 30` has passed (`last_completed_session` in
+  `src/data/market_calendar.py`), taken in New York time rather than the local date. The paper
+  refresh (`src/data_loader.py --paper`, default `--end today`) downloads only through that
+  session, and without `--as-of` the checks flag any row dated after it as a partial intraday bar
+  (`incomplete_session_severity = ERROR`, so the paper gate blocks). Before this, a run during US
+  market hours (for example 01:00 in Hong Kong is midday in New York) filled and marked the paper
+  book at that day's intraday price and keyed the run by that date, so the rerun after the close
+  was skipped. Early closes are read as 16:00, which only delays a half day's bar.
 - **Alignment (ERROR):** volume and benchmark start/end dates and their date sets must match
   `price_data.csv` exactly (`max_end_date_gap_trading_days = 0`, `max_missing_aligned_dates = 0`).
 - **Quality:** unparseable / duplicate / unsorted dates and non-positive prices or negative
