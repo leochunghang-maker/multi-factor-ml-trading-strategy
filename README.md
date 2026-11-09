@@ -290,6 +290,26 @@ test fold. This reduces hyperparameter peeking into the test year; it does **not
 from the candidate menu itself or from repeated research iteration. Selection log:
 `results/reports/nested_model_selection.csv`. Disable with `research.nested_walk_forward: false`.
 
+**Selection rule (decided a priori, before regenerating results).** Inner cost-aware Sharpe
+scores for the three candidates are typically negative and within a few tenths of each other,
+estimated from only 12–60 inner months. Taking the argmax of such noisy scores lets sampling
+noise pick the model each year. The default rule is therefore the cross-validation **one-SE
+rule** (`research.nested_selection_rule: one_se_fallback`): a pre-declared default model
+(`research.nested_default_model: rf_default`, the production model used by the non-nested path)
+is kept unless the best inner candidate beats it by more than
+`research.nested_selection_se_threshold` (1.0) standard errors of the **paired per-month
+difference** in inner net returns (per-date IC differences for `rank_ic`/`icir`). We chose a
+fallback over an ensemble as the primary rule because it keeps a single, auditable production
+model and changes nothing unless there is evidence; the threshold (1 SE) is the textbook value,
+not tuned. Alternatives behind config: `best` (legacy argmax) and `ensemble_equal` (equal-weight
+blend of all candidates, each z-scored with its own *training-set* prediction mean/std). The rule
+was fixed before looking at the regenerated walk-forward numbers; switching rules because of the
+outer-test result would be test-set selection.
+
+**Inner borrow.** With `research.nested_inner_name_level_borrow: true` (default), inner shorts are
+charged from the same point-in-time HTB tier panel as the outer book (ADV$ + volatility proxy
+from data on/before each inner date, plus static overrides), instead of the flat GC rate.
+
 Forward returns are used only as labels or realized outcomes. They are not used to form live
 signals.
 
@@ -356,32 +376,41 @@ These are research outputs from the current committed backtest series, not forwa
 claims. Interpret them with the limitations below (residual survivorship bias, static sector map,
 simplified transaction costs, idealized execution).
 
-### Walk-forward ML (regenerated 2026-11-09, nested inner scoring consistent with outer book)
+### Walk-forward ML (regenerated 2026-11-09, one-SE nested selection + inner HTB borrow)
 
 From `results/walk_forward_metrics.csv`, regenerated with month-end rebalancing, purge/embargo,
 research L/S gross 2.0 (base, before vol scale), PIT eligibility, HTB tiers, sector neutrality,
-**EWMA vol targeting**, and nested `cost_aware_sharpe` whose inner books now use the same
-sector-capped weights and causal vol scaling as the outer book. Nested choices:
-**2022–2025=`ridge_1`**, **2026=`rf_shallow`**. Distinct from paper `MAX_GROSS_EXPOSURE=1.0`.
-Sample: **2022-01-31 → 2026-09-30** (57 periods). Mean research vol scale ≈ **0.94**.
+**EWMA vol targeting**, and nested `cost_aware_sharpe` (inner books consistent with the outer
+book, name-level HTB borrow) under the pre-declared **`one_se_fallback`** rule (see
+"Selection rule" above). Distinct from paper `MAX_GROSS_EXPOSURE=1.0`.
+Sample: **2022-01-31 → 2026-09-30** (57 periods). Mean research vol scale ≈ **1.04**.
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 0.63% |
-| Annual volatility | 17.73% |
-| Sharpe ratio | 0.04 |
-| Max drawdown | -22.46% |
-| Cumulative return | -4.18% |
+| Annual return | 11.62% |
+| Annual volatility | 16.29% |
+| Sharpe ratio | 0.71 |
+| Max drawdown | -20.08% |
+| Cumulative return | 62.96% |
 
-This is a large, honest decline versus the previous **10.17% / Sharpe 0.62 / -15.41% MDD /
-+52.11%** snapshot, which scored inner candidates with an unscaled equal-weight spread that
-ignored sector-cap reweighting. Inner scores are mostly negative and close together (see
-`results/reports/nested_model_selection.csv`), so the choice between candidates is fragile;
-the consistent scorer prefers `ridge_1`, which underperformed out of sample. With
-`nested_inner_vol_targeting: false` (sector-consistent `sum(w·r)` but no inner vol scale) the
-run gives 2.26% / Sharpe 0.13 / -22.46% MDD. The old 0.62 figure is **not** a better choice —
-picking the inner scorer by its outer-test result would itself be test-set selection.
+**Every outer year fell back to `rf_default`.** The inner argmax was `ridge_1` (2022–2025) or
+`rf_shallow` (2026), but its paired monthly net-return advantage over `rf_default` was always
+below one standard error (t ≈ 0.12–0.87; see `paired_mean_diff` / `paired_se` in
+`results/reports/nested_model_selection.csv`). In other words, the inner folds contain no
+evidence that any candidate beats the default, and the walk-forward result is effectively the
+fixed production RF.
 
+Honest caveats:
+- The improvement versus the previous argmax snapshot (0.63% / Sharpe 0.04 / -22.46% /
+  -4.18%) comes from **not switching models on noise**, not from new predictive signal.
+- `rf_default` is itself a researcher choice made after earlier iterations on this same
+  history, so the one-SE anchor inherits that research-iteration bias.
+- Sensitivity only (not used to choose the default): legacy `best` gives 0.63% / Sharpe 0.04 /
+  -22.46% / -4.18% (identical with or without inner HTB borrow — name-level borrow shifts inner
+  scores by ~0.01 but does not change any argmax); `ensemble_equal` gives 12.45% / 17.69% vol /
+  Sharpe 0.70 / -17.20% / +67.75%.
+- Sharpe ≈ 0.7 over 57 months has a wide confidence interval (roughly ±0.9 at 95%), and the
+  survivorship, static-sector and simplified-cost limitations below still apply.
 
 ### Older narrative snapshot (not reproduced by current artifacts)
 

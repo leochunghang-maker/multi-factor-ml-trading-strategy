@@ -11,6 +11,7 @@ from src.config import (
     ML_SHORT_COUNT,
     NESTED_MIN_TRAIN_YEARS,
     NESTED_SELECTION_REPORT_PATH,
+    NESTED_INNER_NAME_LEVEL_BORROW,
     NESTED_INNER_SCORE,
     NESTED_USE_MONTH_END_SUBSET,
     NESTED_WALK_FORWARD,
@@ -75,6 +76,13 @@ def run_walk_forward_ml_backtest(
     use_nested = NESTED_WALK_FORWARD if nested is None else bool(nested)
     yearly_predictions = []
     selection_rows: list[dict] = []
+    # Point-in-time HTB tier panel (each row uses only data on/before its date);
+    # inner scoring reads rows as-of inner dates, all inside the outer train window.
+    inner_borrow_panel = (
+        research_borrow_bps_panel(load_price_data())
+        if use_nested and NESTED_INNER_NAME_LEVEL_BORROW
+        else None
+    )
 
     splits = purged_embargo_year_splits(
         df["date"],
@@ -119,6 +127,7 @@ def run_walk_forward_ml_backtest(
                 use_month_end_subset=NESTED_USE_MONTH_END_SUBSET,
                 outer_test_year=test_year,
                 score_metric=NESTED_INNER_SCORE,
+                borrow_bps_panel=inner_borrow_panel,
             )
             print(
                 f"  nested choice for {test_year}: {meta['chosen_model']} "
@@ -130,6 +139,15 @@ def run_walk_forward_ml_backtest(
                 "selection_mode": meta["selection_mode"],
                 "score_metric": meta["score_metric"],
                 "inner_vol_targeting": meta["inner_vol_targeting"],
+                "selection_rule": meta["selection_rule"],
+                "default_model": meta["default_model"],
+                "se_threshold": meta["se_threshold"],
+                "inner_best_model": meta["inner_best_model"],
+                "best_challenger": meta["best_challenger"],
+                "paired_mean_diff": meta["paired_mean_diff"],
+                "paired_se": meta["paired_se"],
+                "paired_n": meta["paired_n"],
+                "inner_name_level_borrow": meta["inner_name_level_borrow"],
                 "n_train_rows": meta["n_train_rows"],
                 "train_start": meta["train_start"],
                 "train_end": meta["train_end"],

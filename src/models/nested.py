@@ -26,6 +26,23 @@ Inner scoring (configurable via ``NESTED_INNER_SCORE`` / ``score_metric``):
 
   where ``net_{<t}`` are the candidate's own earlier inner-validation net
   returns (inner-train information only; the outer test fold is never seen).
+  Short borrow uses the same point-in-time name-level HTB tier panel as the
+  outer book when ``borrow_bps_panel`` is supplied (row as-of each inner date).
+
+Selection rule (``NESTED_SELECTION_RULE``), fixed a priori — not tuned on outer
+results:
+
+- ``one_se_fallback`` (default): keep the pre-declared default model
+  (``NESTED_DEFAULT_MODEL``, the production ``rf_default``) unless the best
+  inner candidate beats it by more than ``NESTED_SELECTION_SE_THRESHOLD``
+  standard errors of the *paired* per-date difference (net returns for
+  ``cost_aware_sharpe``, ICs for ``rank_ic`` / ``icir``). This is the one-SE
+  rule from cross-validation: inner score gaps inside sampling noise are not
+  evidence that a challenger is better.
+- ``best``: legacy argmax of the inner score.
+- ``ensemble_equal``: equal-weight blend of every candidate refit on the full
+  outer train set, each prediction standardized by its own *training-set*
+  prediction mean/std (no test-fold statistics).
 """
 
 from __future__ import annotations
@@ -48,8 +65,11 @@ from src.config import (
     ML_EMBARGO_DAYS,
     ML_LONG_COUNT,
     ML_SHORT_COUNT,
+    NESTED_DEFAULT_MODEL,
     NESTED_INNER_SCORE,
     NESTED_INNER_VOL_TARGETING,
+    NESTED_SELECTION_RULE,
+    NESTED_SELECTION_SE_THRESHOLD,
     PERIODS_PER_YEAR,
     RANDOM_FOREST_PARAMS,
     RANDOM_SEED,
@@ -65,12 +85,93 @@ from src.models.validation import (
     training_rows_without_label_overlap,
 )
 from src.portfolio.portfolio import (
+    _borrow_bps_on_date,
     equal_weight_long_short_weights,
     transaction_cost_from_weight_change,
 )
 from src.risk.volatility import scale_weights, volatility_target_scale
 
 SUPPORTED_INNER_SCORES = ("rank_ic", "icir", "cost_aware_sharpe")
+SUPPORTED_SELECTION_RULES = ("one_se_fallback", "best", "ensemble_equal")
+
+
+class StandardizedEnsemble:
+    """Equal-weight blend of fitted models with train-set standardization.
+
+    Each member's predictions are z-scored with the mean/std of its own
+    predictions on the training rows it was fit on, so blending never uses
+    statistics from the rows being predicted.
+    """
+
+    def __init__(self, members: list[tuple[str, Any]], X_train: pd.DataFrame):
+        if not members:
+            raise ValueError("ensemble needs at least one member")
+        self.members = members
+        self.names = [name for name, _ in members]
+        self.stats: list[tuple[float, float]] = []
+        for _, model in members:
+            preds = np.asarray(model.predict(X_train), dtype=float)
+            std = float(np.nanstd(preds))
+            self.stats.append((float(np.nanmean(preds)), std if std > 1e-12 else 1.0))
+
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        blended = np.zeros(len(X), dtype=float)
+        for (_, model), (mu, sd) in zip(self.members, self.stats):
+            blended += (np.asarray(model.predict(X), dtype=float) - mu) / sd
+        return blended / len(self.members)
+
+
+def paired_difference_tstat(
+    challenger: dict[Any, float],
+    default: dict[Any, float],
+) -> tuple[float, float, int]:
+    """Mean paired difference, its standard error, and n over shared dates."""
+    shared = [d for d in challenger if d in default]
+    diffs = np.asarray(
+        [challenger[d] - default[d] for d in shared
+         if np.isfinite(challenger[d]) and np.isfinite(default[d])],
+        dtype=float,
+    )
+    if diffs.size < 2:
+        return float("nan"), float("nan"), int(diffs.size)
+    se = float(diffs.std(ddof=1) / np.sqrt(diffs.size))
+    return float(diffs.mean()), se, int(diffs.size)
+
+
+def one_se_choice(
+    score_rows: list[dict[str, Any]],
+    per_date: dict[str, dict[Any, float]],
+    *,
+    default_name: str,
+    se_threshold: float,
+) -> tuple[str, str, dict[str, float]]:
+    """Pick the best inner candidate only if it clears the default by > k·SE.
+
+    Returns ``(chosen_name, selection_mode, stats)`` where stats holds the
+    paired mean difference / SE / n for the best challenger vs the default.
+    """
+    finite = [row for row in score_rows if np.isfinite(row["inner_score"])]
+    names = [row["name"] for row in score_rows]
+    stats = {"best_challenger": None, "paired_mean_diff": float("nan"),
+             "paired_se": float("nan"), "paired_n": 0}
+    if default_name not in names:
+        # Custom menus without the declared default: no anchor, so use argmax.
+        if finite:
+            return max(finite, key=lambda row: row["inner_score"])["name"], "one_se_no_default_argmax", stats
+        return names[-1], "fallback_no_inner_scores", stats
+    if not finite:
+        return default_name, "fallback_no_inner_scores", stats
+    best = max(finite, key=lambda row: row["inner_score"])
+    if best["name"] == default_name:
+        return default_name, "one_se_default_is_best", stats
+    mean_diff, se, n = paired_difference_tstat(
+        per_date.get(best["name"], {}), per_date.get(default_name, {})
+    )
+    stats.update({"best_challenger": best["name"], "paired_mean_diff": mean_diff,
+                  "paired_se": se, "paired_n": n})
+    if np.isfinite(mean_diff) and np.isfinite(se) and mean_diff > se_threshold * se:
+        return best["name"], "one_se_challenger_significant", stats
+    return default_name, "one_se_fallback_to_default", stats
 
 
 def default_nested_candidates() -> list[dict[str, Any]]:
@@ -159,6 +260,7 @@ def net_long_short_period_return(
     annual_cash_financing_bps: float,
     periods_per_year: float,
     vol_scale: float = 1.0,
+    borrow_bps_by_symbol: pd.Series | None = None,
 ) -> tuple[float, pd.Series]:
     """One rebalance's net L/S return after turnover costs and financing.
 
@@ -194,6 +296,7 @@ def net_long_short_period_return(
         annual_short_rebate_bps=annual_short_rebate_bps,
         annual_cash_financing_bps=annual_cash_financing_bps,
         periods_per_year=periods_per_year,
+        borrow_bps_by_symbol=borrow_bps_by_symbol,
     )
     return float(gross - trade_cost - financing), weights
 
@@ -218,13 +321,16 @@ def collect_inner_fold_diagnostics(
     annual_cash_financing_bps: float = ANNUAL_CASH_FINANCING_BPS,
     periods_per_year: float = PERIODS_PER_YEAR,
     vol_targeting: bool | None = None,
+    borrow_bps_panel: pd.DataFrame | None = None,
 ) -> dict[str, list[float]]:
     """Pool per-date ICs and cost-aware net L/S returns across inner folds.
 
     Inner validation years are consecutive, so the candidate's net-return
     history is a single causal series used for vol-target scaling. It starts
     empty for every candidate and only ever contains inner-validation dates
-    that precede the date being sized.
+    that precede the date being sized. ``borrow_bps_panel`` (date × ticker,
+    built point-in-time) supplies name-level borrow; rows are looked up as-of
+    each inner date, so only information available then is used.
     """
     use_vol = (
         NESTED_INNER_VOL_TARGETING if vol_targeting is None else bool(vol_targeting)
@@ -239,6 +345,8 @@ def collect_inner_fold_diagnostics(
     ics: list[float] = []
     net_returns: list[float] = []
     vol_scales: list[float] = []
+    ic_by_date: dict[Any, float] = {}
+    net_by_date: dict[Any, float] = {}
     previous_weights: pd.Series | None = None
 
     for split in splits:
@@ -269,6 +377,14 @@ def collect_inner_fold_diagnostics(
         scored["_nested_score"] = model.predict(inner_valid[feature_columns])
 
         for _date, group in scored.groupby("date"):
+            # Panel rows on/before the inner date only (as-of lookup).
+            name_borrow = (
+                _borrow_bps_on_date(borrow_bps_panel, _date, group["ticker"].drop_duplicates())
+                if borrow_bps_panel is not None and "ticker" in group.columns
+                else None
+            )
+            if name_borrow is not None:
+                name_borrow.index = name_borrow.index.astype(str)
             if "ticker" in group.columns:
                 keyed = group.drop_duplicates("ticker").set_index("ticker")
             else:
@@ -279,6 +395,7 @@ def collect_inner_fold_diagnostics(
             ic = _date_rank_ic(scores, targets)
             if np.isfinite(ic):
                 ics.append(ic)
+                ic_by_date[pd.Timestamp(_date)] = ic
 
             vol_scale = (
                 volatility_target_scale(net_returns, enabled=True) if use_vol else 1.0
@@ -296,12 +413,20 @@ def collect_inner_fold_diagnostics(
                 annual_cash_financing_bps=annual_cash_financing_bps,
                 periods_per_year=periods_per_year,
                 vol_scale=vol_scale,
+                borrow_bps_by_symbol=name_borrow,
             )
             if np.isfinite(net):
                 net_returns.append(net)
                 vol_scales.append(float(vol_scale))
+                net_by_date[pd.Timestamp(_date)] = net
 
-    return {"ics": ics, "net_returns": net_returns, "vol_scales": vol_scales}
+    return {
+        "ics": ics,
+        "net_returns": net_returns,
+        "vol_scales": vol_scales,
+        "ic_by_date": ic_by_date,
+        "net_by_date": net_by_date,
+    }
 
 
 def summarize_inner_score(
@@ -340,6 +465,7 @@ def score_candidate_on_inner_folds(
     long_count: int = ML_LONG_COUNT,
     short_count: int = ML_SHORT_COUNT,
     vol_targeting: bool | None = None,
+    borrow_bps_panel: pd.DataFrame | None = None,
 ) -> float:
     """Scalar inner score for one candidate (NaN if no usable diagnostics)."""
     diagnostics = collect_inner_fold_diagnostics(
@@ -355,6 +481,7 @@ def score_candidate_on_inner_folds(
         long_count=long_count,
         short_count=short_count,
         vol_targeting=vol_targeting,
+        borrow_bps_panel=borrow_bps_panel,
     )
     return summarize_inner_score(diagnostics, score_metric)
 
@@ -375,12 +502,24 @@ def select_model_nested(
     long_count: int = ML_LONG_COUNT,
     short_count: int = ML_SHORT_COUNT,
     vol_targeting: bool | None = None,
+    borrow_bps_panel: pd.DataFrame | None = None,
+    selection_rule: str | None = None,
+    default_model: str | None = None,
+    se_threshold: float | None = None,
 ) -> tuple[Any, dict[str, Any]]:
-    """Choose a candidate using only ``train_df``, then refit on all of it."""
+    """Choose a candidate (or ensemble) using only ``train_df``, then refit on all of it."""
     candidates = deepcopy(candidates or default_nested_candidates())
     if not candidates:
         raise ValueError("candidates must be non-empty")
     metric = NESTED_INNER_SCORE if score_metric is None else str(score_metric)
+    rule = str(NESTED_SELECTION_RULE if selection_rule is None else selection_rule).strip().lower()
+    if rule not in SUPPORTED_SELECTION_RULES:
+        raise ValueError(
+            f"Unsupported nested selection_rule={rule!r}; expected one of {SUPPORTED_SELECTION_RULES}"
+        )
+    default_name = NESTED_DEFAULT_MODEL if default_model is None else str(default_model)
+    k_se = float(NESTED_SELECTION_SE_THRESHOLD if se_threshold is None else se_threshold)
+    per_date: dict[str, dict[Any, float]] = {}
 
     score_rows = []
     for candidate in candidates:
@@ -397,8 +536,14 @@ def select_model_nested(
             long_count=long_count,
             short_count=short_count,
             vol_targeting=vol_targeting,
+            borrow_bps_panel=borrow_bps_panel,
         )
         score = summarize_inner_score(diagnostics, metric)
+        per_date[candidate["name"]] = (
+            diagnostics["net_by_date"]
+            if metric.strip().lower() == "cost_aware_sharpe"
+            else diagnostics["ic_by_date"]
+        )
         score_rows.append({
             "name": candidate["name"],
             "inner_score": score,
@@ -414,20 +559,44 @@ def select_model_nested(
             ),
         })
 
+    names = [c["name"] for c in candidates]
     finite = [row for row in score_rows if np.isfinite(row["inner_score"])]
-    if finite:
-        best_name = max(finite, key=lambda row: row["inner_score"])["name"]
-        selection_mode = f"nested_{metric}"
+    se_stats = {"best_challenger": None, "paired_mean_diff": float("nan"),
+                "paired_se": float("nan"), "paired_n": 0}
+    X_train, y_train = train_df[feature_columns], train_df[target_column]
+    if rule == "ensemble_equal":
+        members = [
+            (c["name"], fit_estimator(c["kind"], c["params"], X_train, y_train))
+            for c in candidates
+        ]
+        model = StandardizedEnsemble(members, X_train)
+        best_name = "ensemble_equal(" + "+".join(names) + ")"
+        selection_mode = "ensemble_equal"
     else:
-        names = [c["name"] for c in candidates]
-        best_name = "rf_default" if "rf_default" in names else names[-1]
-        selection_mode = "fallback_no_inner_scores"
-
-    winner = next(c for c in candidates if c["name"] == best_name)
-    model = fit_estimator(
-        winner["kind"], winner["params"], train_df[feature_columns], train_df[target_column]
-    )
+        if rule == "one_se_fallback":
+            best_name, selection_mode, se_stats = one_se_choice(
+                score_rows, per_date, default_name=default_name, se_threshold=k_se
+            )
+        elif finite:
+            best_name = max(finite, key=lambda row: row["inner_score"])["name"]
+            selection_mode = f"nested_{metric}"
+        else:
+            best_name = default_name if default_name in names else names[-1]
+            selection_mode = "fallback_no_inner_scores"
+        winner = next(c for c in candidates if c["name"] == best_name)
+        model = fit_estimator(winner["kind"], winner["params"], X_train, y_train)
     meta = {
+        "selection_rule": rule,
+        "default_model": default_name,
+        "se_threshold": k_se,
+        "inner_best_model": (
+            max(finite, key=lambda row: row["inner_score"])["name"] if finite else None
+        ),
+        "best_challenger": se_stats["best_challenger"],
+        "paired_mean_diff": se_stats["paired_mean_diff"],
+        "paired_se": se_stats["paired_se"],
+        "paired_n": se_stats["paired_n"],
+        "inner_name_level_borrow": borrow_bps_panel is not None,
         "outer_test_year": outer_test_year,
         "chosen_model": best_name,
         "selection_mode": selection_mode,

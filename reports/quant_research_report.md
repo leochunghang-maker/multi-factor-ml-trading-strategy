@@ -10,11 +10,12 @@ eligibility, HTB borrow tiers, sector-neutral construction, and **EWMA volatilit
 targeting**: annual return **6.43%**, annual volatility **20.88%**, Sharpe ratio
 **0.31**, maximum drawdown **-42.40%**, and cumulative return **38.82%** (ending
 wealth **1.3882**). Walk-forward metrics in `results/walk_forward_metrics.csv`:
-annual return **0.63%**, Sharpe **0.04**, max drawdown **-22.46%**, cumulative
-**-4.18%** over 57 periods, after nested inner scoring was made consistent with the outer
-book (sector-capped weights + causal vol scaling). Older narrative snapshots (multi-factor Sharpe **1.16** /
-**0.39** / **0.23** / **0.26** / **0.30**, walk-forward **0.88** / **0.70** / **0.63** /
-**0.37** / realized-vol **0.62** / EWMA with unscaled inner scoring **0.62**) are superseded.
+annual return **11.62%**, Sharpe **0.71**, max drawdown **-20.08%**, cumulative
+**62.96%** over 57 periods, with the pre-declared one-SE nested selection rule (every outer
+year fell back to `rf_default`; no inner evidence that a challenger is better). Older narrative
+snapshots (multi-factor Sharpe **1.16** / **0.39** / **0.23** / **0.26** / **0.30**, walk-forward
+**0.88** / **0.70** / **0.63** / **0.37** / realized-vol **0.62** / EWMA with unscaled inner
+scoring **0.62** / consistent-inner argmax **0.04**) are superseded.
 
 The results are research outputs from a prototype workflow and should be interpreted with realistic caveats: the base ticker list is still a modern S&P 100-style snapshot (residual survivorship), eligibility uses an S&P 500 membership proxy rather than official S&P 100 PIT constituents, prices come from Yahoo Finance, transaction costs are simplified, and execution assumptions are idealized. They are not investment promises or live-trading claims.
 
@@ -157,13 +158,22 @@ Default inner score (`research.nested_inner_score=cost_aware_sharpe`):
 where `w_t` comes from the same sector-demeaned, sector-net-capped constructor as the outer
 book and `s_t = clip(target_vol / EWMA_forecast(net_{<t}), 0.5, 1.5)` uses only the candidate's
 earlier inner-validation net returns (`research.nested_inner_vol_targeting`, default true;
-false sets `s_t = 1`). Financing uses the configured stock-borrow / rebate / cash-financing bps.
+false sets `s_t = 1`). Financing uses the configured rebate / cash-financing bps and, with
+`research.nested_inner_name_level_borrow: true`, the same point-in-time HTB tier panel as the
+outer book (row as-of each inner date) for short borrow.
 Alternatives: `icir = mean(IC)/std(IC)`, `rank_ic = mean(IC)`.
 
-Regenerated 2026-11-09 with consistent `cost_aware_sharpe`: **2022–2025 chose `ridge_1`,
-2026 chose `rf_shallow`** (the previous unscaled scorer chose 2022–2023=`rf_shallow`,
-2024–2026=`rf_default`). Inner scores are mostly negative and tightly clustered, so model
-choice is fragile and the outer result is sensitive to it. This reduces test-year hyperparameter peeking
+**Selection rule (fixed a priori):** `research.nested_selection_rule=one_se_fallback`. Keep the
+pre-declared default `rf_default` unless the inner-best candidate's paired per-month net-return
+advantage exceeds `nested_selection_se_threshold=1.0` standard errors (one-SE rule). Rationale:
+inner scores come from 12–60 months and are tightly clustered, so argmax mostly selects noise;
+a fallback keeps one auditable production model. Alternatives behind config: `best` (argmax) and
+`ensemble_equal` (equal-weight blend, members z-scored with training-set prediction stats).
+
+Regenerated 2026-11-09: the inner argmax was `ridge_1` (2022–2025) / `rf_shallow` (2026), but its
+paired advantage over `rf_default` had t ≈ 0.12–0.87 in every year, so **every year kept
+`rf_default`**. The walk-forward result is therefore effectively the fixed production RF, and
+`rf_default` itself reflects earlier research iteration on this history. This reduces test-year hyperparameter peeking
 but does not eliminate candidate-menu or research-iteration bias.
 
 ### Survivorship Bias
@@ -254,24 +264,29 @@ Source of truth for the multi-factor backtest in this repository checkout:
 `make report` regenerates the same family of numbers into local
 `results/reports/summary_report.md` / `.csv` (gitignored).
 
-### Walk-forward ML (regenerated 2026-11-06, EWMA vol targeting + sector-neutral)
+### Walk-forward ML (regenerated 2026-11-09, one-SE nested selection + inner HTB borrow)
 
 From `results/walk_forward_metrics.csv`, with month-end rebalancing, purge/embargo, research
 L/S base gross 2.0, PIT eligibility, HTB tiers, sector neutrality, **EWMA vol targeting**, and
-nested `cost_aware_sharpe` (inner books consistent with the outer book). Nested choices:
-2022–2025=`ridge_1`, 2026=`rf_shallow`. Mean research vol scale ≈ 0.94.
+nested `cost_aware_sharpe` (inner books consistent with the outer book, name-level HTB borrow)
+under `one_se_fallback`. Nested choices: 2022–2026=`rf_default` (fallback every year). Mean
+research vol scale ≈ 1.04.
 Sample: **2022-01-31 → 2026-09-30** (57 periods).
 
 | Metric | Walk-forward ML |
 |---|---:|
-| Annual return | 0.63% |
-| Annual volatility | 17.73% |
-| Sharpe ratio | 0.04 |
-| Max drawdown | -22.46% |
-| Cumulative return | -4.18% |
+| Annual return | 11.62% |
+| Annual volatility | 16.29% |
+| Sharpe ratio | 0.71 |
+| Max drawdown | -20.08% |
+| Cumulative return | 62.96% |
 
-Previous snapshot with unscaled inner scoring: 10.17% / 16.43% vol / Sharpe 0.62 / -15.41% /
-+52.11% (superseded). With `nested_inner_vol_targeting: false`: 2.26% / Sharpe 0.13 / -22.46%.
+Superseded: consistent-inner argmax (2c6d681) 0.63% / 17.73% vol / Sharpe 0.04 / -22.46% /
+-4.18%; unscaled inner scoring 10.17% / Sharpe 0.62 / -15.41% / +52.11%. Sensitivity only (not
+used to pick the default): `best` 0.63% / Sharpe 0.04 (same with flat inner borrow);
+`ensemble_equal` 12.45% / 17.69% vol / Sharpe 0.70 / -17.20% / +67.75%. The gain versus argmax
+comes from not switching on noise, not from new signal; a 57-month Sharpe of ~0.7 has a wide
+confidence interval (≈ ±0.9 at 95%).
 
 ### Older narrative snapshot (not current)
 
@@ -321,7 +336,7 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 ## Key Findings
 
 - From regenerated `results/multi_factor_results.csv`, the multi-factor series shows **6.43% annual return**, **0.31 Sharpe**, **-42.40% max drawdown**, and **38.82% cumulative return** over 2019-01-31 → 2026-09-30 (93 periods).
-- Walk-forward ML with nested inner scoring consistent with the outer book shows **0.63% annual return**, **0.04 Sharpe**, **-22.46% max drawdown**, **-4.18% cumulative** over 2022-01-31 → 2026-09-30 (57 periods). The ML edge does not survive consistent, cost-aware model selection; prior unscaled-inner EWMA (**10.17% / 0.62**), realized-vol targeting (**10.02% / 0.62**), sector-neutral-only (**6.34% / 0.37**), and older HTB-only / **23.1% / 0.88** figures are superseded.
+- Walk-forward ML with the one-SE nested rule shows **11.62% annual return**, **0.71 Sharpe**, **-20.08% max drawdown**, **62.96% cumulative** over 2022-01-31 → 2026-09-30 (57 periods). Inner folds found no candidate significantly better than `rf_default`, so this is effectively the fixed production RF; argmax selection on the same inner scores gave **0.63% / 0.04**. Prior unscaled-inner EWMA (**10.17% / 0.62**), realized-vol targeting (**10.02% / 0.62**), sector-neutral-only (**6.34% / 0.37**), and older HTB-only / **23.1% / 0.88** figures are superseded.
 - The architecture now separates data, features, models, portfolio construction, backtests, risk, and reporting into reusable modules.
 - Risk analytics add review context by reporting drawdown, rolling Sharpe, rolling volatility, beta, turnover, and cumulative return.
 - The research remains a prototype until official S&P 100 PIT constituents (not only an S&P 500 proxy), more realistic trading costs, borrow assumptions, and production-grade data are added.
@@ -336,5 +351,5 @@ Turnover measures how much the portfolio changes between rebalances. Average one
 - Extend capacity analysis beyond the 5% ADV participation trade cap (e.g. multi-day
   participation schedules, venue-level liquidity, and AUM stress at institutional size).
 - Add robust experiment tracking for model versions, features, parameters, and validation windows.
-- Stabilize nested selection (e.g. shrink toward a default model when inner scores are within noise, or ensemble candidates) and use name-level HTB borrow in inner scoring; widen the candidate menu only with purge/embargo.
+- Quantify uncertainty of the walk-forward result (block-bootstrap Sharpe CI, deflated Sharpe for the number of variants tried); widen the nested candidate menu only with purge/embargo and the one-SE rule.
 - Add production-quality data checks for stale prices, corporate actions, missing data, and symbol changes.
