@@ -952,11 +952,10 @@ Run:
 pytest -q
 ```
 
-Current local smoke test status from the latest development pass:
-
-```text
-17 passed
-```
+`pytest.ini` turns every warning into a test failure, so deprecations are fixed at the root cause
+instead of piling up (a third-party warning that cannot be fixed gets a narrow, commented
+`ignore:` line there). Status on 2026-11-09: 257 passed, 0 warnings; `python
+scripts/run_smoke_tests.py` also runs the suite plus the doc-metric check.
 
 ## Recruiting-Relevant Skills Demonstrated
 

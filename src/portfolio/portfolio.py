@@ -384,7 +384,7 @@ def build_factor_long_short_returns(
 
     results = pd.DataFrame(portfolio_returns)
     results["date"] = pd.to_datetime(results["date"])
-    results.set_index("date", inplace=True)
+    results = results.set_index("date")
     return results
 
 
@@ -562,7 +562,7 @@ def build_prediction_long_short_returns(
     if results.empty:
         return results
     results["date"] = pd.to_datetime(results["date"])
-    results.set_index("date", inplace=True)
+    results = results.set_index("date")
     return results
 
 
@@ -650,5 +650,5 @@ def build_multi_factor_long_short_returns(
 
     results = pd.DataFrame(portfolio_returns)
     results["date"] = pd.to_datetime(results["date"])
-    results.set_index("date", inplace=True)
+    results = results.set_index("date")
     return results

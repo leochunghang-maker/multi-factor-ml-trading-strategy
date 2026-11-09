@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -62,5 +64,5 @@ def test_walk_forward_metrics_csv_matches_period_returns() -> None:
 def test_committed_docs_match_committed_results() -> None:
     issues = check_documents()
     assert not issues, "\n".join(str(i) for i in issues) + "\nRun: python src/check_doc_metrics.py --fix"
-    total = sum(len(MARKER.findall(open(d).read())) for d in DEFAULT_DOCUMENTS)
+    total = sum(len(MARKER.findall(Path(d).read_text())) for d in DEFAULT_DOCUMENTS)
     assert total >= 200  # guard against markers being stripped wholesale
