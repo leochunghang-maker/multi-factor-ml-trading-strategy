@@ -1,7 +1,13 @@
-.PHONY: install test smoke signals paper paper-data paper-data-check paper-status paper-backup paper-daily paper-review dashboard report health significance data-check research doc-metrics
+.PHONY: install install-loose lock test smoke signals paper paper-data paper-data-check paper-status paper-backup paper-daily paper-review dashboard report health significance data-check research doc-metrics
 
 install:
+	pip install --require-hashes -r requirements.lock
+
+install-loose:
 	pip install -r requirements.txt
+
+lock:
+	uv pip compile requirements.txt --python-version 3.12 --universal --generate-hashes -o requirements.lock
 
 test:
 	pytest -q

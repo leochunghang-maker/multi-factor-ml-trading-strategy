@@ -17,9 +17,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: requirements.lock
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      # requirements.lock pins every package (incl. transitive) with hashes;
+      # requirements.txt stays the hand-edited list of direct dependencies.
+      - name: Install dependencies (locked)
+        run: pip install --require-hashes -r requirements.lock
 
       - name: Run unit tests
         run: pytest -q

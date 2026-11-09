@@ -122,17 +122,25 @@ algorithmic-trading-project/
 │   ├── risk/                     # Exposure and volatility utilities
 │   └── simulation/               # Multi-day paper-trading simulation
 ├── tests/                        # Automated correctness and safety tests
-├── requirements.txt
+├── requirements.txt              # Direct dependencies (hand-edited spec)
+├── requirements.lock             # Full pinned + hashed lock (CI and `make install`)
 └── README.md
 ```
 
 ## How to Run the Full Workflow
 
-Install dependencies:
+Install dependencies (exact locked versions, same as CI):
 
 ```bash
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.lock   # or: make install
 ```
+
+`requirements.txt` is the hand-edited list of direct dependencies; `requirements.lock` pins every
+package, including transitive ones, with sha256 hashes for Python 3.12+ on Linux/macOS/Windows.
+To change a dependency: edit `requirements.txt`, run `make lock` (= `uv pip compile requirements.txt
+--python-version 3.12 --universal --generate-hashes -o requirements.lock`; `pip install uv` first),
+run the tests, and commit both files. `tests/test_dependency_lock.py` fails if a direct dependency's
+version in the lock differs from `requirements.txt` or a locked package has no hash.
 
 Run the data pipeline:
 
@@ -224,7 +232,9 @@ paper trading, and dashboard review. They do not enable live-money trading.
 
 | Command | Purpose |
 |---|---|
-| `make install` | Install Python dependencies from `requirements.txt`. |
+| `make install` | Install the exact locked environment: `pip install --require-hashes -r requirements.lock` (what CI uses). |
+| `make install-loose` | Install only the direct dependencies from `requirements.txt` (pip resolves the rest). |
+| `make lock` | Regenerate `requirements.lock` after editing `requirements.txt` (needs `pip install uv`). |
 | `make test` | Run the automated test suite with `pytest -q`. |
 | `make smoke` | Run the lightweight end-to-end smoke test runner. |
 | `make signals` | Generate the latest local paper-trading signal file. |
