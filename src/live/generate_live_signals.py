@@ -1,20 +1,26 @@
+import hashlib
+import json
 import pickle
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 import pandas as pd
+import sklearn
 import yfinance as yf
 
 from src.config import (
     FEATURES,
     LIVE_LONG_COUNT,
+    LIVE_MODEL_META_PATH,
     LIVE_MODEL_PATH,
     LIVE_PRICE_LOOKBACK_PERIOD,
     LIVE_RESULTS_DIR,
     LIVE_SIGNALS_PATH,
     ML_DATASET_PATH,
+    RANDOM_FOREST_PARAMS,
     TARGET,
     TICKERS,
 )
@@ -69,24 +75,96 @@ def calculate_live_features(prices: pd.DataFrame) -> pd.DataFrame:
     return features.dropna(subset=FEATURES).reset_index(drop=True)
 
 
+def _file_sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as file:
+        for chunk in iter(lambda: file.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def model_fingerprint(dataset_path: str = ML_DATASET_PATH) -> dict:
+    # Everything that determines the fitted model. A saved model is reused only
+    # while all of these match; otherwise it is stale and gets retrained.
+    return {
+        "dataset_sha256": _file_sha256(dataset_path),
+        "features": list(FEATURES),
+        "target": TARGET,
+        "random_forest_params": dict(RANDOM_FOREST_PARAMS),
+        "sklearn_version": sklearn.__version__,
+    }
+
+
+def _stale_reason(saved: dict, current: dict) -> str | None:
+    for key, label in (
+        ("dataset_sha256", "ML dataset changed"),
+        ("features", "feature list changed"),
+        ("target", "target changed"),
+        ("random_forest_params", "model parameters changed"),
+        ("sklearn_version", "scikit-learn version changed"),
+    ):
+        if saved.get(key) != current[key]:
+            return label
+    return None
+
+
 def train_latest_model(dataset_path: str = ML_DATASET_PATH):
-    # If no saved live model exists, train the same Random Forest architecture
-    # used in research on the latest local ML dataset. This produces rankings,
-    # not broker orders or guaranteed return forecasts.
+    # Train the same Random Forest architecture used in research on the latest
+    # local ML dataset. This produces rankings, not broker orders or guaranteed
+    # return forecasts. Rows without a realized label are not trainable.
     dataset = load_ml_dataset(dataset_path).sort_values("date")
+    dataset = dataset.dropna(subset=[*FEATURES, TARGET])
+    if dataset.empty:
+        raise RuntimeError(f"No labelled rows to train the live model in {dataset_path}.")
     model = train_random_forest(dataset[FEATURES], dataset[TARGET])
     Path(LIVE_RESULTS_DIR).mkdir(parents=True, exist_ok=True)
     with Path(LIVE_MODEL_PATH).open("wb") as file:
         pickle.dump(model, file)
+    metadata = {
+        **model_fingerprint(dataset_path),
+        "dataset_path": str(dataset_path),
+        "training_rows": int(len(dataset)),
+        "last_label_date": str(pd.Timestamp(dataset["date"].max()).date()),
+        "trained_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+    Path(LIVE_MODEL_META_PATH).write_text(json.dumps(metadata, indent=2, sort_keys=True))
     return model
 
 
 def load_or_train_model(dataset_path: str = ML_DATASET_PATH):
+    """Reuse the saved live model only if it was trained on this exact dataset.
+
+    The daily paper run rebuilds the ML dataset before generating signals, so a
+    saved model without matching metadata (dataset hash, features, target, model
+    parameters, scikit-learn version) is stale and is retrained.
+    """
     model_path = Path(LIVE_MODEL_PATH)
-    if model_path.exists():
-        with model_path.open("rb") as file:
-            return pickle.load(file), "loaded saved Random Forest model"
-    return train_latest_model(dataset_path), f"trained Random Forest model from {dataset_path}"
+    meta_path = Path(LIVE_MODEL_META_PATH)
+    current = model_fingerprint(dataset_path)
+    if not model_path.exists():
+        reason = "no saved model"
+    elif not meta_path.exists():
+        reason = "saved model has no training metadata"
+    else:
+        try:
+            saved = json.loads(meta_path.read_text())
+        except (OSError, ValueError):
+            saved = {}
+        reason = _stale_reason(saved, current)
+        if reason is None:
+            try:
+                with model_path.open("rb") as file:
+                    model = pickle.load(file)
+            except Exception:
+                reason = "saved model could not be loaded"
+            else:
+                return model, (
+                    "loaded saved Random Forest model trained on "
+                    f"{saved.get('dataset_path', dataset_path)} "
+                    f"(labels through {saved.get('last_label_date', 'unknown')})"
+                )
+    model = train_latest_model(dataset_path)
+    return model, f"trained Random Forest model from {dataset_path} ({reason})"
 
 
 def composite_factor_score(features: pd.DataFrame) -> pd.Series:

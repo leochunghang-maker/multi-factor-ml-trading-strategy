@@ -195,6 +195,12 @@ Run live signal generation for the simulated paper-trading workflow:
 python src/live/generate_live_signals.py
 ```
 
+The saved model (`results/live/latest_model.pkl`) is reused only while its metadata file
+(`latest_model.meta.json`: dataset SHA-256, features, target, Random Forest parameters,
+scikit-learn version, last label date) matches the current ML dataset; otherwise it is retrained.
+The daily paper run rebuilds the dataset first, so the model now follows the data instead of
+staying frozen at its first training run.
+
 Run simulated paper trading:
 
 ```bash

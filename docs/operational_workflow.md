@@ -33,7 +33,10 @@ The workflow performs:
    after the last closed session, and any other data ERROR block the run; exit code 2),
 3. idempotency check (a completed signal date is skipped; `--force` replaces the latest run),
 4. feature generation (factor files and ML dataset written to `data/paper/`),
-5. signal generation (from the gated paper prices and paper ML dataset),
+5. signal generation (from the gated paper prices and paper ML dataset; the saved Random Forest in
+   `results/live/latest_model.pkl` is reused only if `latest_model.meta.json` matches the current
+   dataset hash, features, target, model parameters and scikit-learn version, otherwise it is
+   retrained, so a refreshed dataset is never scored by a stale model),
 6. signal and portfolio safety checks,
 7. simulated broker execution with reconciliation against the previous run, a dated snapshot in
    `results/paper/runs/<date>/`, and ledger/journal rows in `results/paper/`,

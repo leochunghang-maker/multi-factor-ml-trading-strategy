@@ -62,6 +62,10 @@ trading is local and simulated only. There is no live-money execution path.
   during US market hours used to trade and mark the book at a partial intraday bar and then skip
   the after-close rerun for that date. Freshness is measured from the last closed session in New
   York time instead of the local date. Research numbers are unaffected.
+- **Live model staleness:** the signal step used to load `results/live/latest_model.pkl` forever
+  once it existed, so the dataset rebuilt by each daily run was never used for training. The model
+  now carries a metadata file (dataset hash, features, target, parameters, scikit-learn version)
+  and is retrained when any of them changes. Research numbers are unaffected.
 - **Rebalance bug fix:** sells now execute before buys, and buys are sized from the cash left
   after the sells. Before this, exits listed after the buys caused insufficient-cash rejections
   (`5102ebe`). No checked-in number changed.
