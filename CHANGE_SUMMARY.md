@@ -72,6 +72,11 @@ trading is local and simulated only. There is no live-money execution path.
 
 ## Engineering and robustness
 
+- **No broker client:** the unused Alpaca paper-API executor (`src/execution/paper_trade_executor.py`,
+  never called by any workflow, untested, contradicting `execution.mode: local_simulated_paper_only`),
+  its `.env.example` and its three config paths were removed. `tests/test_no_broker_connection.py`
+  fails if a broker SDK, HTTP client or broker endpoint appears in `src/`, `scripts/` or
+  `dashboard/`. Research numbers are unaffected.
 - Config: risk, execution and simulation settings come from `config/platform_config.json`
   (`2d89585`). `tests/test_config_keys.py` checks that keys read in `src/` and keys in the file
   match (`e781fe7`).

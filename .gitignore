@@ -1,7 +1,6 @@
 # Local secrets and operator-specific overrides
 .env
 .env.*
-!.env.example
 config/*.local.json
 
 # macOS and editor noise

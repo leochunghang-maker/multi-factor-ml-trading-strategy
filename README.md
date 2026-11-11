@@ -368,8 +368,10 @@ The simulated broker tracks:
 - Portfolio snapshots and execution logs.
 - Stale signal and missing price diagnostics.
 
-The workflow never submits live-money orders. The separate Alpaca paper executor is dry-run by
-default and targets paper endpoints only.
+The workflow never submits orders anywhere: there is no broker connection or broker API client in
+the repository (an unused Alpaca paper-API executor was removed), and
+`tests/test_no_broker_connection.py` fails if one is added. The only network access is the Yahoo
+price download in `src/data_loader.py`.
 
 ## Strategy And Validation
 

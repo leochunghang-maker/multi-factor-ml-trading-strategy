@@ -77,7 +77,7 @@ class SmokeTestRunner:
         tracked = [
             line.strip()
             for line in completed.stdout.splitlines()
-            if line.strip() and line.strip() != ".env.example"
+            if line.strip()
         ]
         if tracked:
             self.fail("Tracked .env files", f"secret-like files tracked by Git: {', '.join(tracked)}")

@@ -26,7 +26,7 @@ Check these items before running `scripts/run_daily_paper_trading.py`:
 
 - Confirm the project is still in paper-trading mode.
 - Confirm no real-money broker endpoint or live-order mode has been enabled.
-- Confirm `.env` credentials, if present, are paper credentials only.
+- Confirm no broker SDK, HTTP client or credentials have been added (`tests/test_no_broker_connection.py`).
 - Check that `config/platform_config.json` has reasonable risk limits.
 - Check that `results/live/latest_signals.csv` exists if you are using existing local signals.
 - Check the signal date. Stale signals should not be used without understanding why.
@@ -148,7 +148,7 @@ Stop the simulated workflow and investigate before continuing if any of the foll
 - Signal dates are stale or in the future.
 - Price dates do not match the expected signal date.
 - Live-money trading appears enabled or a real-money endpoint is configured.
-- API credentials are missing when an external paper broker path is expected.
+- Any code path tries to reach a broker or order API (there should be none).
 - A latest run has unexplained rejected orders.
 - Cash is unexpectedly high, negative, or inconsistent with target weights.
 - Turnover is much higher than expected.
