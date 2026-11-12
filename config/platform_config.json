@@ -141,7 +141,8 @@
     },
     "paper_stale_severity": "ERROR",
     "report_path": "reports/data_quality_report.md",
-    "note": "Freshness counts weekdays after the last date up to the as-of date (exchange holidays are not excluded, so it can overcount by a holiday). Misalignment compares price, volume and benchmark date ranges and index sets against price_data.csv. Hashes are SHA-256 of the file with CRLF normalised to LF; update the manifest only after reviewing a re-download (python src/check_data.py --update-manifest)."
+    "research_snapshot_end": "2026-11-01",
+    "note": "Freshness counts NYSE trading days (weekends and NYSE holidays excluded) after the last date up to the as-of date: the last closed NYSE session, or for the research data/ the last session before research_snapshot_end (must equal src/config.py END_DATE; the paper data dir and paper gate always use the last closed session). Misalignment compares price, volume and benchmark date ranges and index sets against price_data.csv. Hashes are SHA-256 of the file with CRLF normalised to LF; update the manifest only after reviewing a re-download (python src/check_data.py --update-manifest)."
   },
   "significance": {
     "trial_log_path": "research/trial_log.csv",

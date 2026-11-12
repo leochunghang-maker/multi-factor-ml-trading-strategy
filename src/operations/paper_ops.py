@@ -353,7 +353,10 @@ def paper_data_gate(
         paper_config = load_platform_config()
     paper_config = {
         **paper_config,
-        "data_checks": {**settings, "stale_severity": settings.get("paper_stale_severity", "ERROR")},
+        # The paper gate is always measured against the last closed session, never the
+        # frozen research snapshot end.
+        "data_checks": {**settings, "stale_severity": settings.get("paper_stale_severity", "ERROR"),
+                        "research_snapshot_end": None},
     }
     findings, summary = run_data_checks(
         as_of=as_of, config=paper_config, root=root, data_paths=data_paths, now=now

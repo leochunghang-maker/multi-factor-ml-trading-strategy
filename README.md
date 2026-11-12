@@ -860,8 +860,14 @@ python src/operations/health.py
 smoke-test line (FAIL on any ERROR, WARNING otherwise).
 
 - **Freshness:** last date more than `max_stale_trading_days = 5` NYSE trading days before the
-  last closed NYSE session (or `--as-of`) → `stale_severity` (WARNING by default, because the checked-in data is a research
-  snapshot). The daily paper runner uses `paper_stale_severity` (ERROR) instead and blocks on any
+  last closed NYSE session (or `--as-of`) → `stale_severity` (WARNING by default). The checked-in
+  research `data/` is a frozen snapshot, so without `--as-of` it is measured against the last
+  session before `data_checks.research_snapshot_end` (`2026-11-01`, exclusive; a test keeps it equal
+  to `END_DATE` in `src/config.py`), i.e. 2026-10-30: a truncated snapshot is still flagged, but
+  the snapshot no longer turns into a permanent, growing WARNING in the smoke test, `make health`
+  and the data report. An INFO `snapshot` finding records how many sessions the last closed
+  session is past it. `data/paper/` and the paper gate always use the last closed session.
+  The daily paper runner uses `paper_stale_severity` (ERROR) instead and blocks on any
   data ERROR. Trading days come from `data_checks.calendar = "NYSE"`
   (`src/data/market_calendar.py`): weekends, the ten regular NYSE holidays with NYSE observance
   rules (e.g. Thanksgiving, Good Friday, Juneteenth from 2022) and a checked-in list of one-off
@@ -898,8 +904,9 @@ Nothing in these checks modifies data. Findings on the current snapshot are in
 
 Findings on the checked-in snapshot (2018-01-02 → 2026-10-30, 2,220 rows): **no errors**;
 price, volume and SPY files are exactly aligned; no calendar gaps, holes inside listed histories,
-flat-price runs, zero volumes or split-like jumps. Warnings: the snapshot is 6 trading days old
-as of 2026-11-09 (staleness is the only warning). **`BK` is an all-NaN column** in both price and
+flat-price runs, zero volumes or split-like jumps. **No warnings:** the snapshot is complete
+through 2026-10-30, its last session before `research_snapshot_end` (before 2026-11-13 the check
+measured it against the wall clock and reported a growing staleness WARNING). **`BK` is an all-NaN column** in both price and
 volume files (failed Yahoo download; the eligibility mask drops empty columns, so research runs on
 100 names). Decision (2026-11-09): **keep BK excluded and do not re-download it**, because adding
 it would change the research universe and results, i.e. count as a new trial. The decision and

@@ -51,6 +51,11 @@ DEFAULT_DATA_CHECKS: dict[str, Any] = {
     "session_settle_minutes": 30,
     "incomplete_session_severity": "ERROR",
     "report_path": "reports/data_quality_report.md",
+    # Research snapshot end (exclusive, as passed to the downloader). When set, a
+    # wall-clock check of the research data/ measures freshness against the last
+    # session before it instead of today; the paper data dir and the paper gate
+    # always use the last closed session.
+    "research_snapshot_end": None,
 }
 
 # The three time-series inputs checked for freshness and alignment.
@@ -488,9 +493,27 @@ def run_data_checks(
     settle = int(settings.get("session_settle_minutes", 30))
     wall_clock = as_of is None or now is not None
     last_session = last_completed_session(now, calendar, settle) if wall_clock else None
-    as_of = pd.Timestamp(as_of if as_of is not None else last_session).normalize()
     frames = {name: load_dated_csv(root / path) for name, path in inputs.items()}
     findings: list[DataFinding] = []
+    research = getattr(data_paths, "kind", "research") == "research"
+    snapshot_end = settings.get("research_snapshot_end")
+    if as_of is not None:
+        reference = "as_of"
+    elif research and snapshot_end and last_session is not None:
+        reference = "research_snapshot_end"
+        snapshot_last = research_snapshot_last_session(snapshot_end, calendar)
+        as_of = min(snapshot_last, last_session)
+        behind = trading_days_between(as_of, last_session, calendar)
+        findings.append(DataFinding(
+            "INFO", "snapshot", "research data",
+            f"frozen research snapshot (research_snapshot_end {pd.Timestamp(snapshot_end).date()}, exclusive): "
+            f"freshness is measured against its last session {as_of.date()}; the last closed session "
+            f"{last_session.date()} is {behind} trading day(s) later. Refreshing data/ changes research "
+            "results (a trial); the paper workflow uses its own data dir (make paper-data)",
+        ))
+    else:
+        reference = "last_closed_session"
+    as_of = pd.Timestamp(as_of if as_of is not None else last_session).normalize()
     if last_session is not None:
         findings += check_incomplete_session(frames, last_session, settings)
     findings += check_freshness(frames, as_of, settings)
@@ -502,6 +525,7 @@ def run_data_checks(
     summary = {
         "as_of": str(as_of.date()),
         "last_closed_session": str(last_session.date()) if last_session is not None else None,
+        "freshness_reference": reference,
         "calendar": str(settings.get("calendar", "NYSE")),
         "data_dir": str(data_paths.root) if data_paths is not None else "data",
         "files": {
@@ -515,6 +539,13 @@ def run_data_checks(
         "counts": {s: sum(f.severity == s for f in findings) for s in SEVERITIES},
     }
     return findings, summary
+
+
+def research_snapshot_last_session(snapshot_end, calendar: str = "NYSE") -> pd.Timestamp:
+    """Last trading day strictly before ``snapshot_end`` (the downloader's end is exclusive)."""
+    from src.data.market_calendar import previous_trading_day
+
+    return pd.Timestamp(previous_trading_day(snapshot_end, calendar)).normalize()
 
 
 def paper_manifest_settings(settings: dict[str, Any], data_paths) -> dict[str, Any]:

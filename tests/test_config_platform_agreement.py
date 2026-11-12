@@ -86,3 +86,8 @@ def test_config_values_agree_with_platform_config() -> None:
     assert config.PAPER_VOL_TARGETING_ENABLED == platform["risk_limits"]["vol_targeting_enabled"]
     assert config.PAPER_VOL_LOOKBACK_DAYS == platform["risk_limits"]["vol_lookback_days"]
     assert config.PAPER_VOL_MAX_SCALE == platform["risk_limits"]["vol_max_scale"]
+
+
+def test_research_snapshot_end_matches_config_end_date() -> None:
+    """The data check's frozen-snapshot reference is the downloader's research END_DATE."""
+    assert load_platform_config()["data_checks"]["research_snapshot_end"] == config.END_DATE

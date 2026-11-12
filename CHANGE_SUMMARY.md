@@ -72,6 +72,12 @@ trading is local and simulated only. There is no live-money execution path.
 
 ## Engineering and robustness
 
+- **Research snapshot freshness:** the frozen research `data/` (END_DATE 2026-11-01) was measured
+  against the wall clock, so the smoke test, `make health` and `reports/data_quality_report.md`
+  showed a permanent staleness WARNING that grew every day and could hide a real one. With
+  `data_checks.research_snapshot_end` it is now measured against its last session (2026-10-30); a
+  truncated snapshot is still flagged, the gap to the last closed session is an INFO line, and
+  `data/paper/` and the paper gate keep the last closed session. Research numbers are unaffected.
 - **No broker client:** the unused Alpaca paper-API executor (`src/execution/paper_trade_executor.py`,
   never called by any workflow, untested, contradicting `execution.mode: local_simulated_paper_only`),
   its `.env.example` and its three config paths were removed. `tests/test_no_broker_connection.py`
