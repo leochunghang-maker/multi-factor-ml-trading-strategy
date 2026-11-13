@@ -1,9 +1,10 @@
+import argparse
 import json
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
@@ -13,7 +14,6 @@ from src.config import (
     ALLOCATION_SUMMARY_PATH,
     MULTI_DAY_NAV_PATH,
     PAPER_TRADING_STATUS_REPORT_PATH,
-    PRICE_DATA_PATH,
     REALIZED_VS_TARGET_WEIGHTS_PATH,
     SIMULATED_EXECUTION_LOG_PATH,
     SIMULATED_LATEST_SNAPSHOT_PATH,
@@ -22,8 +22,17 @@ from src.config import (
     SYSTEM_STATUS_JSON_PATH,
     SYSTEM_STATUS_REPORT_PATH,
 )
+from src.data.required import producer_command
 from src.operations.configuration import load_platform_config
 from src.operations.structured_logging import read_recent_events
+
+# Fallback when producer_command does not know the artifact.
+_OPERATIONAL_HINTS = {
+    "results/live/latest_signals.csv": "make signals",
+    "results/simulation/latest_account_snapshot.csv": "make paper",
+    "results/simulation/execution_log.csv": "make paper",
+    "results/reports/summary_report.csv": "make report",
+}
 
 
 @dataclass
@@ -44,11 +53,52 @@ def read_csv(path: str, date_columns: list[str] | None = None) -> pd.DataFrame:
     return frame
 
 
-def check_required_files(config: dict[str, Any]) -> list[HealthFinding]:
+def operational_file_list(config: dict[str, Any]) -> list[str]:
+    return list(config["monitoring"]["operational_files"])
+
+
+def health_overall_status(findings: list[HealthFinding]) -> str:
+    """ERROR/WARNING only; INFO findings (e.g. no local paper run) stay OK."""
+    if any(f.severity == "ERROR" for f in findings):
+        return "ERROR"
+    if any(f.severity == "WARNING" for f in findings):
+        return "WARNING"
+    return "OK"
+
+
+def check_required_files(
+    config: dict[str, Any],
+    *,
+    present: Callable[[str], bool] | None = None,
+) -> list[HealthFinding]:
+    exists = present or (lambda path: Path(path).exists())
     findings = []
     for file_name in config["monitoring"]["required_files"]:
-        if not Path(file_name).exists():
+        if not exists(file_name):
             findings.append(HealthFinding("ERROR", "missing_file", f"Missing required file: {file_name}"))
+    return findings
+
+
+def check_operational_files(
+    config: dict[str, Any],
+    *,
+    present: Callable[[str], bool] | None = None,
+) -> list[HealthFinding]:
+    """Gitignored paper/sim/report artifacts: missing is INFO, not ERROR."""
+    exists = present or (lambda path: Path(path).exists())
+    findings = []
+    for file_name in operational_file_list(config):
+        if exists(file_name):
+            continue
+        command = producer_command(file_name) or _OPERATIONAL_HINTS.get(file_name)
+        how = f"; create it with `{command}`" if command else " (gitignored local artifact)"
+        findings.append(
+            HealthFinding(
+                "INFO",
+                "operational_file",
+                f"Local operational file not in this checkout: {file_name}{how}.",
+            )
+        )
     return findings
 
 
@@ -83,11 +133,22 @@ def check_paper_operations(paths=None) -> list[HealthFinding]:
         return [HealthFinding("ERROR", "paper_operations", f"Paper-run checks failed to run: {exc}")]
 
 
-def check_latest_snapshot(config: dict[str, Any]) -> tuple[list[HealthFinding], dict[str, Any]]:
+def check_latest_snapshot(
+    config: dict[str, Any],
+    *,
+    available: bool = True,
+) -> tuple[list[HealthFinding], dict[str, Any]]:
     findings = []
-    snapshot = read_csv(SIMULATED_LATEST_SNAPSHOT_PATH)
+    snapshot = read_csv(SIMULATED_LATEST_SNAPSHOT_PATH) if available else pd.DataFrame()
     if snapshot.empty:
-        return [HealthFinding("ERROR", "portfolio_state", "Latest account snapshot is missing.")], {}
+        return [
+            HealthFinding(
+                "INFO",
+                "portfolio_state",
+                "No local simulation snapshot in this checkout "
+                "(results/simulation/ is gitignored; run `make paper` or the multi-day simulation).",
+            )
+        ], {}
     latest = snapshot.iloc[-1].to_dict()
     gross = float(latest.get("gross_exposure", 0.0))
     turnover = float(latest.get("turnover", 0.0))
@@ -105,11 +166,22 @@ def check_latest_snapshot(config: dict[str, Any]) -> tuple[list[HealthFinding], 
     return findings, latest
 
 
-def check_concentration(config: dict[str, Any]) -> tuple[list[HealthFinding], list[dict[str, Any]]]:
+def check_concentration(
+    config: dict[str, Any],
+    *,
+    available: bool = True,
+) -> tuple[list[HealthFinding], list[dict[str, Any]]]:
     findings = []
-    positions = read_csv(SIMULATED_POSITION_SNAPSHOT_PATH)
+    positions = read_csv(SIMULATED_POSITION_SNAPSHOT_PATH) if available else pd.DataFrame()
     if positions.empty:
-        return [HealthFinding("WARNING", "concentration", "No latest position snapshot available.")], []
+        return [
+            HealthFinding(
+                "INFO",
+                "concentration",
+                "No local position snapshot in this checkout "
+                "(results/simulation/ is gitignored; run `make paper` or the multi-day simulation).",
+            )
+        ], []
     max_weight = config["risk_limits"]["max_position_weight"]
     top = positions.sort_values("weight", key=lambda series: series.abs(), ascending=False).head(5)
     breaches = top[top["weight"].abs() > max_weight + 0.005]
@@ -119,8 +191,8 @@ def check_concentration(config: dict[str, Any]) -> tuple[list[HealthFinding], li
     return findings, top.to_dict("records")
 
 
-def latest_execution_status() -> dict[str, Any]:
-    execution = read_csv(SIMULATED_EXECUTION_LOG_PATH, ["timestamp"])
+def latest_execution_status(*, available: bool = True) -> dict[str, Any]:
+    execution = read_csv(SIMULATED_EXECUTION_LOG_PATH, ["timestamp"]) if available else pd.DataFrame()
     if execution.empty:
         return {"latest_event": "unavailable", "recent_rejections": 0}
     recent = execution.tail(50)
@@ -131,8 +203,8 @@ def latest_execution_status() -> dict[str, Any]:
     }
 
 
-def check_execution_status() -> tuple[list[HealthFinding], dict[str, Any]]:
-    status = latest_execution_status()
+def check_execution_status(*, available: bool = True) -> tuple[list[HealthFinding], dict[str, Any]]:
+    status = latest_execution_status(available=available)
     findings = []
     if status.get("recent_failures", 0) > 0:
         findings.append(
@@ -153,7 +225,9 @@ def check_execution_status() -> tuple[list[HealthFinding], dict[str, Any]]:
     return findings, status
 
 
-def load_optional_operational_tables() -> dict[str, Any]:
+def load_optional_operational_tables(*, available: bool = True) -> dict[str, Any]:
+    if not available:
+        return {"latest_allocation": {}, "latest_realized_gap_count": 0, "latest_multi_day_nav": {}}
     allocation = read_csv(ALLOCATION_SUMMARY_PATH)
     realized = read_csv(REALIZED_VS_TARGET_WEIGHTS_PATH)
     multi_day = read_csv(MULTI_DAY_NAV_PATH, ["date"])
@@ -164,31 +238,45 @@ def load_optional_operational_tables() -> dict[str, Any]:
     }
 
 
-def build_health_status() -> dict[str, Any]:
+def build_health_status(*, checkout_only: bool = False) -> dict[str, Any]:
     # Operational safety matters because quant platforms fail through mundane
     # problems as often as model problems: missing files, stale data, broken
     # execution logs, and drifted risk. Health checks make those visible.
+    # checkout_only scores committed artifacts only, so a fresh clone and the
+    # committed reports/system_status.md are not a permanent ERROR for
+    # gitignored paper/sim outputs that this machine happens to have.
     config = load_platform_config()
+    operational = set(operational_file_list(config))
+    if checkout_only:
+        present = lambda path: False if path in operational else Path(path).exists()
+        local_ops = False
+    else:
+        present = lambda path: Path(path).exists()
+        local_ops = True
+
     findings = []
-    findings.extend(check_required_files(config))
+    findings.extend(check_required_files(config, present=present))
+    findings.extend(check_operational_files(config, present=present))
     data_findings, data_summary = check_data_inputs(config)
     findings.extend(data_findings)
-    findings.extend(check_paper_operations())
-    snapshot_findings, latest_snapshot = check_latest_snapshot(config)
+    if local_ops:
+        findings.extend(check_paper_operations())
+    snapshot_findings, latest_snapshot = check_latest_snapshot(config, available=local_ops)
     findings.extend(snapshot_findings)
-    concentration_findings, top_positions = check_concentration(config)
+    concentration_findings, top_positions = check_concentration(config, available=local_ops)
     findings.extend(concentration_findings)
-    execution_findings, execution_status = check_execution_status()
+    execution_findings, execution_status = check_execution_status(available=local_ops)
     findings.extend(execution_findings)
-    events = read_recent_events(STRUCTURED_LOG_PATH, limit=20)
+    events = read_recent_events(STRUCTURED_LOG_PATH, limit=20) if local_ops else []
     status = {
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "overall_status": "ERROR" if any(f.severity == "ERROR" for f in findings) else "WARNING" if findings else "OK",
+        "scope": "checkout" if checkout_only else "local",
+        "overall_status": health_overall_status(findings),
         "findings": [finding.__dict__ for finding in findings],
         "latest_portfolio_state": latest_snapshot,
         "latest_risk_state": {
             "top_positions": top_positions,
-            **load_optional_operational_tables(),
+            **load_optional_operational_tables(available=local_ops),
         },
         "latest_execution_status": execution_status,
         "data_inputs": data_summary,
@@ -201,11 +289,20 @@ def save_system_status_report(status: dict[str, Any]) -> None:
     Path(SYSTEM_STATUS_JSON_PATH).parent.mkdir(parents=True, exist_ok=True)
     Path(SYSTEM_STATUS_JSON_PATH).write_text(json.dumps(status, indent=2, sort_keys=True, default=str))
 
+    scope = status.get("scope", "local")
+    if scope == "checkout":
+        scope_line = (
+            "- Scope: checkout (committed artifacts only; local paper/sim outputs are gitignored)"
+        )
+    else:
+        scope_line = "- Scope: local (includes gitignored paper/sim outputs when present)"
+
     lines = [
         "# System Status",
         "",
         f"- Generated at: {status['generated_at']}",
         f"- Overall status: {status['overall_status']}",
+        scope_line,
         "",
         "## Findings",
         "",
@@ -223,12 +320,23 @@ def save_system_status_report(status: dict[str, Any]) -> None:
         "",
         "## Latest Portfolio State",
         "",
-        f"- Portfolio value: {float(portfolio.get('portfolio_value', 0.0)):.2f}",
-        f"- Cash: {float(portfolio.get('cash', 0.0)):.2f}",
-        f"- Positions: {int(portfolio.get('number_of_positions', 0)) if portfolio else 0}",
-        f"- Gross exposure: {float(portfolio.get('gross_exposure', 0.0)):.2%}",
-        f"- Net exposure: {float(portfolio.get('net_exposure', 0.0)):.2%}",
-        f"- Drawdown: {float(portfolio.get('drawdown', 0.0)):.2%}",
+    ])
+    if portfolio:
+        lines.extend([
+            f"- Portfolio value: {float(portfolio.get('portfolio_value', 0.0)):.2f}",
+            f"- Cash: {float(portfolio.get('cash', 0.0)):.2f}",
+            f"- Positions: {int(portfolio.get('number_of_positions', 0)) if portfolio else 0}",
+            f"- Gross exposure: {float(portfolio.get('gross_exposure', 0.0)):.2%}",
+            f"- Net exposure: {float(portfolio.get('net_exposure', 0.0)):.2%}",
+            f"- Drawdown: {float(portfolio.get('drawdown', 0.0)):.2%}",
+            "- Note: this snapshot is local-only (`results/simulation/` is gitignored).",
+        ])
+    else:
+        lines.append(
+            "- No local simulation snapshot in this checkout (`results/simulation/` is gitignored)."
+        )
+
+    lines.extend([
         "",
         "## Data Inputs",
         "",
@@ -249,10 +357,25 @@ def save_system_status_report(status: dict[str, Any]) -> None:
     Path(SYSTEM_STATUS_REPORT_PATH).write_text("\n".join(lines) + "\n")
 
 
-def main() -> None:
-    status = build_health_status()
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Write reports/system_status.md and results/operations/latest_system_status.json. "
+            "Without --checkout, local paper/sim artifacts are scored when present."
+        )
+    )
+    parser.add_argument(
+        "--checkout",
+        action="store_true",
+        help=(
+            "Score only committed artifacts, treating gitignored paper/sim outputs as absent. "
+            "Use this when writing reports/system_status.md for the repo."
+        ),
+    )
+    args = parser.parse_args(argv)
+    status = build_health_status(checkout_only=args.checkout)
     save_system_status_report(status)
-    print(f"System status: {status['overall_status']}")
+    print(f"System status: {status['overall_status']} ({status['scope']})")
     print(f"Report saved to {SYSTEM_STATUS_REPORT_PATH}")
 
 

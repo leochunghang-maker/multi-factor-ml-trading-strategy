@@ -39,11 +39,13 @@ STEPS: list[tuple[str, list[str], str]] = [
      "results/walk_forward_period_returns.csv, walk_forward_metrics.csv, walk_forward_ml_strategy.png, "
      "results/reports/nested_model_selection.csv"),
     ("multi-day-sim", ["src/simulation/run_multi_day_simulation.py"],
-     "results/simulation/multi_day/* (local), reports/multi_day_simulation_report.md, reports/system_status.md"),
+     "results/simulation/multi_day/* (local), reports/multi_day_simulation_report.md, reports/system_status.md (rewritten by health-checkout)"),
     ("significance", ["src/run_significance_report.py", "--cached-walk-forward"],
      "results/significance_report.csv, results/benchmark_relative_report.csv"),
     ("beta-diagnosis", ["research/diagnose_multi_factor_beta.py"], "results/multi_factor_beta_diagnosis.csv"),
     ("doc-metrics", ["src/check_doc_metrics.py"], "verifies quoted numbers in README.md and reports/*.md"),
+    ("health-checkout", ["src/operations/health.py", "--checkout"],
+     "reports/system_status.md (checkout view: committed artifacts only)"),
 ]
 
 

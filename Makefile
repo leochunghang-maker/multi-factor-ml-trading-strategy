@@ -1,4 +1,4 @@
-.PHONY: install install-loose lock test smoke signals paper paper-data paper-data-check paper-status paper-backup paper-daily paper-review dashboard report health significance data-check research doc-metrics
+.PHONY: install install-loose lock test smoke signals paper paper-data paper-data-check paper-status paper-backup paper-daily paper-review dashboard report health health-checkout significance data-check research doc-metrics
 
 install:
 	pip install --require-hashes -r requirements.lock
@@ -48,6 +48,9 @@ report:
 
 health:
 	python src/operations/health.py
+
+health-checkout:
+	python src/operations/health.py --checkout
 
 significance:
 	python src/run_significance_report.py

@@ -255,7 +255,8 @@ paper trading, and dashboard review. They do not enable live-money trading.
 | `make paper-backup` | Write a verified backup of the paper account to `backups/paper/` (restore: `python scripts/paper_backup.py restore FILE`). |
 | `make dashboard` | Start the Streamlit dashboard. |
 | `make report` | Regenerate research and risk summary reports. |
-| `make health` | Run the operational health check (includes the data checks below). |
+| `make health` | Run the operational health check (includes the data checks below; scores local paper/sim outputs when present). |
+| `make health-checkout` | Write the committed checkout health report (gitignored paper/sim outputs counted as absent). |
 | `make research` | Regenerate every committed research artifact in dependency order, then verify the numbers quoted in the docs. |
 | `make doc-metrics` | Only verify quoted numbers in `README.md` / `reports/quant_research_report.md` against the result files. |
 | `make data-check` | Data freshness, alignment, quality and manifest checks; writes `reports/data_quality_report.md`. |
@@ -733,13 +734,18 @@ From `reports/paper_trading_status.md` (latest run `2026-05-23T17:29:40+00:00`):
 | Trades filled | 0 |
 | Rejected orders | 0 |
 
-`reports/system_status.md` is rewritten by every multi-day simulation / `make research` /
-`make health` run. In this checkout it reports overall status **`ERROR`**: the local paper-trading
-artifacts it monitors (`results/live/latest_signals.csv`, `results/simulation/*` snapshots) are
-not committed, and the data checks warn that the price snapshot is stale (`BK` is reported as
-INFO, by decision; see "Data Checks"). (An
-earlier version of this paragraph described a May 2026 `WARNING` snapshot caused by rejected
-orders; that snapshot had already been overwritten.) The paper-trading status table above is
+`reports/system_status.md` is rewritten by `make health`, the multi-day simulation, paper runs
+and `make research`. The committed file is the **checkout** view
+(`python src/operations/health.py --checkout` / `make health-checkout`): it scores only committed
+artifacts and treats gitignored paper/sim outputs as absent. In this checkout it reports overall
+status **`OK`**. Missing local operational files (`results/live/latest_signals.csv`,
+`results/simulation/*` snapshots, `results/reports/summary_report.csv`) are **INFO**, not ERROR,
+so a fresh clone is not a permanent ERROR. Data checks on the frozen research snapshot are
+clean through 2026-10-30 (see "Data Checks"; `BK` is INFO, by decision). A local
+`python src/operations/health.py` (no `--checkout`) also scores those artifacts when they exist
+on the machine. (An earlier version of this paragraph described a permanent `ERROR` from treating
+those gitignored files as required, plus a staleness WARNING that the 2026-11-13 snapshot-end
+fix already removed.) The paper-trading status table above is
 from the last daily paper run (May 2026) and is older than the research data.
 
 ## Screenshots / Outputs
@@ -848,8 +854,15 @@ Operational runs save:
 Run the health monitor directly:
 
 ```bash
-python src/operations/health.py
+python src/operations/health.py              # local view (includes paper/sim outputs when present)
+python src/operations/health.py --checkout   # committed checkout view (make health-checkout)
 ```
+
+`monitoring.required_files` (currently `data/price_data.csv`) must exist in a checkout or health
+is ERROR. `monitoring.operational_files` are gitignored local paper/sim/report artifacts; missing
+ones are INFO and do not change overall status. `make research` rewrites the committed
+`reports/system_status.md` with `--checkout` so a local simulation run does not leave machine-specific
+portfolio numbers in the file that is reviewed on GitHub.
 
 ### Data checks (freshness, alignment, quality, manifest)
 
@@ -1004,7 +1017,7 @@ pytest -q
 
 `pytest.ini` turns every warning into a test failure, so deprecations are fixed at the root cause
 instead of piling up (a third-party warning that cannot be fixed gets a narrow, commented
-`ignore:` line there). Status on 2026-11-09: 257 passed, 0 warnings; `python
+`ignore:` line there). Status on 2026-11-14: 311 passed, 0 warnings; `python
 scripts/run_smoke_tests.py` also runs the suite plus the doc-metric check.
 
 ## Recruiting-Relevant Skills Demonstrated

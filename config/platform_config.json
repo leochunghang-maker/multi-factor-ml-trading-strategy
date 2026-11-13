@@ -101,12 +101,15 @@
   },
   "monitoring": {
     "required_files": [
-      "data/price_data.csv",
+      "data/price_data.csv"
+    ],
+    "operational_files": [
       "results/live/latest_signals.csv",
       "results/simulation/latest_account_snapshot.csv",
       "results/simulation/execution_log.csv",
       "results/reports/summary_report.csv"
     ],
+    "operational_files_note": "required_files must exist in a committed checkout (ERROR if missing). operational_files are gitignored local paper/sim/report artifacts: missing is INFO, not ERROR, so a fresh clone and the committed system_status.md are not a permanent ERROR. python src/operations/health.py --checkout ignores them even if they exist locally.",
     "status_report_path": "reports/system_status.md",
     "structured_log_path": "results/operations/platform_events.jsonl",
     "metadata_dir": "results/operations/run_metadata"

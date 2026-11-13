@@ -1,31 +1,25 @@
 # System Status
 
-- Generated at: 2026-11-09T10:39:17+00:00
-- Overall status: ERROR
+- Generated at: 2026-11-13T16:56:12+00:00
+- Overall status: OK
+- Scope: checkout (committed artifacts only; local paper/sim outputs are gitignored)
 
 ## Findings
 
-- **ERROR** `missing_file`: Missing required file: results/live/latest_signals.csv
-- **ERROR** `missing_file`: Missing required file: results/simulation/latest_account_snapshot.csv
-- **ERROR** `missing_file`: Missing required file: results/simulation/execution_log.csv
-- **WARNING** `data_freshness`: price_data: last date 2026-10-30 is 6 trading days before 2026-11-09 (limit 5)
-- **WARNING** `data_freshness`: volume_data: last date 2026-10-30 is 6 trading days before 2026-11-09 (limit 5)
-- **WARNING** `data_freshness`: benchmark_prices: last date 2026-10-30 is 6 trading days before 2026-11-09 (limit 5)
-- **ERROR** `portfolio_state`: Latest account snapshot is missing.
-- **WARNING** `concentration`: No latest position snapshot available.
+- **INFO** `operational_file`: Local operational file not in this checkout: results/live/latest_signals.csv; create it with `make signals`.
+- **INFO** `operational_file`: Local operational file not in this checkout: results/simulation/latest_account_snapshot.csv; create it with `make paper`.
+- **INFO** `operational_file`: Local operational file not in this checkout: results/simulation/execution_log.csv; create it with `make paper`.
+- **INFO** `operational_file`: Local operational file not in this checkout: results/reports/summary_report.csv; create it with `make report`.
+- **INFO** `portfolio_state`: No local simulation snapshot in this checkout (results/simulation/ is gitignored; run `make paper` or the multi-day simulation).
+- **INFO** `concentration`: No local position snapshot in this checkout (results/simulation/ is gitignored; run `make paper` or the multi-day simulation).
 
 ## Latest Portfolio State
 
-- Portfolio value: 0.00
-- Cash: 0.00
-- Positions: 0
-- Gross exposure: 0.00%
-- Net exposure: 0.00%
-- Drawdown: 0.00%
+- No local simulation snapshot in this checkout (`results/simulation/` is gitignored).
 
 ## Data Inputs
 
-- Data checks: WARNING (as of 2026-11-09; details: `python src/check_data.py`)
+- Data checks: OK (as of 2026-10-30; details: `python src/check_data.py`)
 
 ## Latest Execution Status
 

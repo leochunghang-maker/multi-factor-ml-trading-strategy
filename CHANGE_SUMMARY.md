@@ -92,6 +92,15 @@ trading is local and simulated only. There is no live-money execution path.
   everything with hashes, and CI installs from it (`dabf444`, `733338b`).
 - CI runs pytest and the smoke tests on every push to `main` (`e468f4e`). `pytest.ini` turns
   warnings into failures, and the suite has 0 warnings (`8d9e481`).
+- **Checkout health:** `make health` used to treat gitignored paper/sim artifacts
+  (`results/live/latest_signals.csv`, `results/simulation/*`, `results/reports/summary_report.csv`)
+  as required, so a fresh clone and the committed `reports/system_status.md` were a permanent
+  ERROR (and, before 2026-11-13, also carried a growing snapshot-staleness WARNING). Those
+  paths are now `monitoring.operational_files` (missing = INFO). `monitoring.required_files` is
+  the committed `data/price_data.csv`. Overall status ignores INFO. `python src/operations/health.py
+  --checkout` / `make health-checkout` scores only committed artifacts, even when this machine
+  has local paper/sim outputs; `make research` writes that checkout view. Research numbers are
+  unaffected.
 
 ## Original structural refactor (May 2026)
 
