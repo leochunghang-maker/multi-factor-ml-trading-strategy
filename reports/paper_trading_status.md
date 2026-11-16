@@ -1,28 +1,12 @@
 # Paper Trading Status
 
-- Latest run date: 2026-05-23T17:29:40+00:00
-- Price date: 2026-05-22 00:00:00
-- Signal date: 2026-05-22 00:00:00
-- Portfolio value: 113855.54
-- Cash: 1196.86
-- Number of positions: 10
-- Turnover: 0.0000
-- Drawdown: -0.11%
-- Trades filled: 0
-- Rejected orders: 0
+This file is a checkout pointer, not a live account snapshot.
 
-## Top Holdings
+Live paper-account status is local and gitignored:
 
-- AMAT: 9.91% weight, value 11277.69
-- LRCX: 9.91% weight, value 11277.69
-- MU: 9.91% weight, value 11277.69
-- ABT: 9.89% weight, value 11260.80
-- ACN: 9.89% weight, value 11260.80
+- `make paper-status` writes `results/paper/status.md` and `status.json` (alerts, last data gate, latest run, journal tail).
+- Each simulated rebalance also writes `results/paper/latest_run.md` (top holdings, warnings, rejected orders for that run).
 
-## Warnings
+A local paper day, `make health`, or the multi-day simulation must not write NAV or positions into this path, so machine-specific account numbers are not left in the GitHub tree.
 
-- None.
-
-## Rejected Orders
-
-- None.
+Paper trading is local and simulated only. There is no broker connection and no live-money execution.

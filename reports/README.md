@@ -3,7 +3,7 @@
 This folder contains lightweight Markdown report snapshots that are useful for GitHub review:
 
 - `quant_research_report.md`: research methodology and analytics summary.
-- `paper_trading_status.md`: latest local paper-trading operating status.
+- `paper_trading_status.md`: pointer to the local paper account files (`results/paper/status.md` via `make paper-status`; gitignored). Not a live NAV snapshot.
 - `multi_day_simulation_report.md`: latest multi-day paper simulation summary.
 - `system_status.md`: checkout health snapshot (`make health-checkout`): committed artifacts only. Gitignored paper/sim outputs are listed as INFO when absent, and do not make overall status ERROR. A local `make health` scores those artifacts when they exist on the machine.
 - `paper_constraint_binding_report.md`: how often and by how much the paper guardrails bind on the

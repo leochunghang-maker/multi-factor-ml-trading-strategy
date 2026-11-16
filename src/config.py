@@ -129,7 +129,10 @@ SIMULATED_LATEST_REJECTED_PATH = "results/simulation/latest_rejected_orders.csv"
 PAPER_OPS_DIR = "results/paper"
 ALLOCATION_SUMMARY_PATH = "results/simulation/allocation_summary.csv"
 REALIZED_VS_TARGET_WEIGHTS_PATH = "results/simulation/realized_vs_target_weights.csv"
-PAPER_TRADING_STATUS_REPORT_PATH = "reports/paper_trading_status.md"
+# Latest rebalance snapshot (top holdings, rejections). Local and gitignored;
+# the committed reports/paper_trading_status.md is only a pointer to results/paper/.
+PAPER_TRADING_STATUS_REPORT_PATH = "results/paper/latest_run.md"
+LOCAL_SYSTEM_STATUS_REPORT_PATH = "results/operations/local_system_status.md"
 MULTI_DAY_SIMULATION_DIR = "results/simulation/multi_day"
 MULTI_DAY_NAV_PATH = "results/simulation/multi_day/portfolio_nav_history.csv"
 MULTI_DAY_EXPOSURE_PATH = "results/simulation/multi_day/exposure_history.csv"

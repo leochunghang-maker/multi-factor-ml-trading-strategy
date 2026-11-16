@@ -47,8 +47,8 @@ This checklist is for the local simulated paper-trading workflow. It does not en
 
 ## After The Run
 
-- Review `reports/paper_trading_status.md`.
-  This is the daily operator summary for portfolio value, cash, holdings, turnover, drawdown, warnings, and rejected orders.
+- Review `results/paper/status.md` (`make paper-status`) and `results/paper/latest_run.md`.
+  These local files are the daily operator summary for portfolio value, cash, holdings, turnover, drawdown, warnings, and rejected orders. `reports/paper_trading_status.md` is only a pointer.
 
 - Review `results/simulation/execution_log.csv`.
   Execution logs matter because they create an audit trail for fills, skips, failures, and rejected orders.

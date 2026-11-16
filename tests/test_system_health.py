@@ -123,3 +123,77 @@ def test_checkout_report_does_not_invent_a_zero_portfolio(tmp_path, monkeypatch)
     assert "No local simulation snapshot in this checkout" in text
     assert "Portfolio value: 0.00" not in text
     assert "**INFO** `operational_file`" in text
+
+
+def test_local_health_report_does_not_overwrite_checkout_report(tmp_path, monkeypatch) -> None:
+    checkout_report = tmp_path / "reports" / "system_status.md"
+    local_report = tmp_path / "results" / "operations" / "local_system_status.md"
+    json_path = tmp_path / "results" / "operations" / "latest_system_status.json"
+    checkout_report.parent.mkdir(parents=True)
+    checkout_report.write_text("CHECKOUT PLACEHOLDER\n")
+    monkeypatch.setattr("src.operations.health.SYSTEM_STATUS_REPORT_PATH", str(checkout_report))
+    monkeypatch.setattr("src.operations.health.LOCAL_SYSTEM_STATUS_REPORT_PATH", str(local_report))
+    monkeypatch.setattr("src.operations.health.SYSTEM_STATUS_JSON_PATH", str(json_path))
+    status = {
+        "generated_at": "2026-11-17T00:00:00+00:00",
+        "scope": "local",
+        "overall_status": "OK",
+        "findings": [],
+        "latest_portfolio_state": {
+            "portfolio_value": 123456.78,
+            "cash": 1.0,
+            "number_of_positions": 3,
+            "gross_exposure": 0.9,
+            "net_exposure": 0.9,
+            "drawdown": -0.02,
+        },
+        "latest_execution_status": {"recent_rejections": 0, "recent_failures": 0},
+        "data_inputs": {"status": "OK", "as_of": "2026-10-30"},
+    }
+    written = save_system_status_report(status)
+    assert written == local_report
+    assert checkout_report.read_text() == "CHECKOUT PLACEHOLDER\n"
+    text = local_report.read_text()
+    assert "Scope: local" in text
+    assert "Portfolio value: 123456.78" in text
+    assert json_path.exists()
+
+
+def test_checkout_save_does_not_write_the_local_report(tmp_path, monkeypatch) -> None:
+    checkout_report = tmp_path / "reports" / "system_status.md"
+    local_report = tmp_path / "results" / "operations" / "local_system_status.md"
+    json_path = tmp_path / "results" / "operations" / "latest_system_status.json"
+    monkeypatch.setattr("src.operations.health.SYSTEM_STATUS_REPORT_PATH", str(checkout_report))
+    monkeypatch.setattr("src.operations.health.LOCAL_SYSTEM_STATUS_REPORT_PATH", str(local_report))
+    monkeypatch.setattr("src.operations.health.SYSTEM_STATUS_JSON_PATH", str(json_path))
+    status = {
+        "generated_at": "2026-11-17T00:00:00+00:00",
+        "scope": "checkout",
+        "overall_status": "OK",
+        "findings": [],
+        "latest_portfolio_state": {},
+        "latest_execution_status": {"recent_rejections": 0, "recent_failures": 0},
+        "data_inputs": {"status": "OK", "as_of": "2026-10-30"},
+    }
+    written = save_system_status_report(status)
+    assert written == checkout_report
+    assert "Scope: checkout" in checkout_report.read_text()
+    assert not local_report.exists()
+
+
+def test_committed_paper_trading_status_is_a_pointer_not_a_nav_snapshot() -> None:
+    from pathlib import Path
+
+    text = Path("reports/paper_trading_status.md").read_text()
+    assert "results/paper/status.md" in text
+    assert "make paper-status" in text
+    assert "Portfolio value:" not in text
+    assert "113855" not in text
+
+
+def test_paper_run_status_path_is_local() -> None:
+    from src.config import PAPER_OPS_DIR, PAPER_TRADING_STATUS_REPORT_PATH
+
+    assert PAPER_TRADING_STATUS_REPORT_PATH.startswith(f"{PAPER_OPS_DIR}/")
+    assert not PAPER_TRADING_STATUS_REPORT_PATH.startswith("reports/")
+

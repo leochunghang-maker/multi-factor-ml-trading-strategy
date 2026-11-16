@@ -10,8 +10,8 @@ not be treated as trading advice.
 ## Daily Review Workflow
 
 1. Run or review the paper-trading workflow output.
-2. Open `reports/paper_trading_status.md` and record the latest portfolio status.
-3. Open `reports/system_status.md` and note any health warnings.
+2. Open `results/paper/status.md` (`make paper-status`) and `results/paper/latest_run.md` and record the latest portfolio status.
+3. Open `results/operations/local_system_status.md` (`make health`) and note any health warnings. The committed `reports/system_status.md` is the checkout view only.
 4. Check `results/live/latest_signals.csv` for signal date, target weights, and unusual names.
 5. Check `results/simulation/rejected_orders.csv` and `results/simulation/execution_log.csv` for
    rejected orders, missing prices, stale signals, or unexpected fills.

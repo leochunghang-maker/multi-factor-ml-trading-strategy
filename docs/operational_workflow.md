@@ -136,10 +136,11 @@ Use this to test whether the operating process remains stable through many dates
 Run:
 
 ```bash
-python src/operations/health.py
+python src/operations/health.py              # local view -> results/operations/local_system_status.md
+python src/operations/health.py --checkout   # committed checkout view -> reports/system_status.md
 ```
 
-The monitor checks stale data, missing files, abnormal turnover, abnormal exposure, excessive drawdown, concentration, and execution failures.
+The monitor checks stale data, missing files, abnormal turnover, abnormal exposure, excessive drawdown, concentration, and execution failures. `make health` (no `--checkout`) does not overwrite the committed checkout report.
 
 ## Reproducibility
 

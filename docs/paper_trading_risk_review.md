@@ -9,8 +9,8 @@ enable real-money trading.
 
 ## Files to Review
 
-- Latest paper-trading status: `reports/paper_trading_status.md`
-- System health status: `reports/system_status.md`
+- Latest paper-trading status: `results/paper/status.md` (`make paper-status`) and `results/paper/latest_run.md`
+- System health status: `results/operations/local_system_status.md` (`make health`). The committed `reports/system_status.md` is the checkout view only.
 - Latest live signals: `results/live/latest_signals.csv`
 - Account snapshot: `results/simulation/latest_account_snapshot.csv`
 - Position snapshot: `results/simulation/latest_position_snapshot.csv`
@@ -33,32 +33,27 @@ Check these items before running `scripts/run_daily_paper_trading.py`:
 - Check that target weights are non-negative and do not imply leverage.
 - Check that the expected number of positions matches the strategy expectation.
 - Check that price data exists for the signal tickers.
-- Read the latest `reports/system_status.md` and understand any warnings before continuing.
+- Read the latest local health report (`results/operations/local_system_status.md` after `make health`) and understand any warnings before continuing. The committed `reports/system_status.md` is a checkout view and will not reflect this machine's paper account.
 
 If any of these checks look wrong, stop and investigate before running the workflow.
 
 ## After Running the System
 
-Start with `reports/paper_trading_status.md`. For the latest reviewed run, it recorded:
+Start with `make paper-status` (`results/paper/status.md`) and the latest rebalance snapshot
+(`results/paper/latest_run.md`). Record the current portfolio value, cash, position count, turnover,
+drawdown, trades filled and rejected orders from those local files — they are the live account, not
+the committed pointer at `reports/paper_trading_status.md`.
 
-- Portfolio value: `113855.54`
-- Cash: `1196.86`
-- Number of positions: `10`
-- Turnover: `0.0000`
-- Drawdown: `-0.11%`
-- Trades filled: `0`
-- Rejected orders: `0`
-
-Then compare that status report with:
+Then compare that status with:
 
 - `results/simulation/latest_account_snapshot.csv`
 - `results/simulation/allocation_summary.csv`
 - `results/simulation/execution_log.csv`
-- `reports/system_status.md`
+- `results/operations/local_system_status.md`
 
-The latest execution log shows the final portfolio run completed with `filled=0`, `rejected=0`,
-`pnl=0.00`, and `turnover=0.000000`. That means the latest run did not need trades because positions
-were already close to target weights.
+If the latest execution log shows `filled=0`, `rejected=0`, `pnl=0.00` and `turnover=0`, the run did
+not need trades because positions were already close to target weights. Confirm that against the
+status file for *this* run rather than a previously committed snapshot.
 
 ## How to Interpret Rejected Orders
 
@@ -76,7 +71,7 @@ Common examples:
 - Missing or stale price: the order should not proceed because the system cannot value the trade
   safely.
 
-Important nuance: `reports/paper_trading_status.md` reports rejected orders for the latest run, while
+Important nuance: `results/paper/latest_run.md` reports rejected orders for the latest run, while
 `results/simulation/rejected_orders.csv` can contain historical rejected orders from earlier runs.
 If the status report says `Rejected orders: 0` but the system health report warns about recent
 rejections, check timestamps before treating it as a current failure.
@@ -130,8 +125,8 @@ Cash deserves review when:
 Drawdown measures how far the portfolio is below its previous high. It is a practical measure of
 pain and path risk.
 
-In the latest paper-trading status report, drawdown was `-0.11%`, which is small. The number should
-still be tracked over time because small losses can become meaningful if they persist or accelerate.
+Read the latest drawdown from `results/paper/status.md` or `latest_run.md`. Even a small figure
+should still be tracked over time because small losses can become meaningful if they persist or accelerate.
 
 Drawdown deserves review when:
 

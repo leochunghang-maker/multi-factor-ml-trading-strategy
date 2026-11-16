@@ -1,6 +1,6 @@
 # Change Summary
 
-What changed in this repository, grouped by area, as of `main` on 2026-11-09. Commit hashes are
+What changed in this repository, grouped by area, as of `main` on 2026-11-17. Commit hashes are
 given so each item can be checked. Current performance numbers live in `README.md` and
 `reports/quant_research_report.md`. They are checked against the result files by
 `python src/check_doc_metrics.py`, so this file does not repeat them.
@@ -101,6 +101,13 @@ trading is local and simulated only. There is no live-money execution path.
   --checkout` / `make health-checkout` scores only committed artifacts, even when this machine
   has local paper/sim outputs; `make research` writes that checkout view. Research numbers are
   unaffected.
+- **Local reports stay local:** `make health`, paper runs and the multi-day simulation used to
+  overwrite the committed `reports/system_status.md` with this machine's paper/sim NAV, and each
+  paper rebalance wrote live holdings into the tracked `reports/paper_trading_status.md` (a stale
+  May 2026 snapshot was quoted in the README). Local health now writes
+  `results/operations/local_system_status.md`; only `--checkout` writes `reports/system_status.md`.
+  The run snapshot is `results/paper/latest_run.md`, and the committed paper-status file is a
+  pointer to `make paper-status` / `results/paper/status.md`. Research numbers are unaffected.
 
 ## Original structural refactor (May 2026)
 

@@ -1,7 +1,7 @@
 # Paper Trading Journal
 
 This journal is for ongoing review of the local simulated paper-trading workflow. Add entries after
-reviewing `reports/paper_trading_status.md`, `reports/system_status.md`, live signal outputs, and
+reviewing `results/paper/status.md` (`make paper-status`), `reports/system_status.md` (checkout health), live signal outputs, and
 execution logs.
 
 The daily numbers are journaled automatically: every completed run of

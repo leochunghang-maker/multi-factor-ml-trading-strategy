@@ -53,8 +53,8 @@ so reviewers can evaluate both the technical implementation and the research dis
 ## Quick Links
 
 - Research report: `reports/quant_research_report.md`
-- Paper-trading status: `reports/paper_trading_status.md`
-- System health report: `reports/system_status.md`
+- Paper-trading status: `results/paper/status.md` (`make paper-status`; local, gitignored). Pointer: `reports/paper_trading_status.md`
+- System health report: `reports/system_status.md` (checkout view). Local: `results/operations/local_system_status.md` (`make health`)
 - Multi-day simulation report: `reports/multi_day_simulation_report.md`
 - Dashboard: `dashboard/app.py`
 - Daily paper-trading runner: `scripts/run_daily_paper_trading.py`
@@ -97,8 +97,8 @@ flowchart TD
 | Strategy backtesting | `results/strategy_vs_benchmark.png`, `results/multi_factor_results.csv` |
 | Walk-forward ML chart | `results/walk_forward_ml_strategy.png` (metrics CSV not committed) |
 | Risk analytics | Generated locally by `make report` under `results/reports/` (gitignored) |
-| Paper trading status | `reports/paper_trading_status.md` |
-| Monitoring | `reports/system_status.md` |
+| Paper trading status | Local: `results/paper/status.md` (`make paper-status`; gitignored). Pointer: `reports/paper_trading_status.md` |
+| Monitoring | `reports/system_status.md` (checkout view). Local: `results/operations/local_system_status.md` |
 
 ## Repository Structure
 
@@ -255,8 +255,8 @@ paper trading, and dashboard review. They do not enable live-money trading.
 | `make paper-backup` | Write a verified backup of the paper account to `backups/paper/` (restore: `python scripts/paper_backup.py restore FILE`). |
 | `make dashboard` | Start the Streamlit dashboard. |
 | `make report` | Regenerate research and risk summary reports. |
-| `make health` | Run the operational health check (includes the data checks below; scores local paper/sim outputs when present). |
-| `make health-checkout` | Write the committed checkout health report (gitignored paper/sim outputs counted as absent). |
+| `make health` | Run the operational health check (includes the data checks below; scores local paper/sim outputs when present). Writes `results/operations/local_system_status.md`; does not overwrite the committed checkout report. |
+| `make health-checkout` | Write the committed checkout health report (`reports/system_status.md`; gitignored paper/sim outputs counted as absent). |
 | `make research` | Regenerate every committed research artifact in dependency order, then verify the numbers quoted in the docs. |
 | `make doc-metrics` | Only verify quoted numbers in `README.md` / `reports/quant_research_report.md` against the result files. |
 | `make data-check` | Data freshness, alignment, quality and manifest checks; writes `reports/data_quality_report.md`. |
@@ -722,31 +722,27 @@ this checkout, The corrected walk-forward metrics now live in `results/walk_forw
 
 ### Paper-trading and system status (committed reports)
 
-From `reports/paper_trading_status.md` (latest run `2026-05-23T17:29:40+00:00`):
+Live paper-account numbers (NAV, positions, alerts) are local and gitignored. After a run,
+`make paper-status` writes `results/paper/status.md` and `status.json`; the latest rebalance
+snapshot (top holdings, rejections) is `results/paper/latest_run.md`. The committed
+`reports/paper_trading_status.md` is only a pointer to those files, so a local paper day does
+not leave machine-specific NAV in the GitHub tree. (A May 2026 snapshot previously lived in
+that path and was quoted here; it was older than the research data and was not a research result.)
 
-| Paper-Trading Field | Report value |
-|---|---:|
-| Portfolio value | 113855.54 |
-| Cash | 1196.86 |
-| Positions | 10 |
-| Turnover | 0.0000 |
-| Drawdown | -0.11% |
-| Trades filled | 0 |
-| Rejected orders | 0 |
-
-`reports/system_status.md` is rewritten by `make health`, the multi-day simulation, paper runs
-and `make research`. The committed file is the **checkout** view
-(`python src/operations/health.py --checkout` / `make health-checkout`): it scores only committed
-artifacts and treats gitignored paper/sim outputs as absent. In this checkout it reports overall
-status **`OK`**. Missing local operational files (`results/live/latest_signals.csv`,
-`results/simulation/*` snapshots, `results/reports/summary_report.csv`) are **INFO**, not ERROR,
-so a fresh clone is not a permanent ERROR. Data checks on the frozen research snapshot are
-clean through 2026-10-30 (see "Data Checks"; `BK` is INFO, by decision). A local
-`python src/operations/health.py` (no `--checkout`) also scores those artifacts when they exist
-on the machine. (An earlier version of this paragraph described a permanent `ERROR` from treating
-those gitignored files as required, plus a staleness WARNING that the 2026-11-13 snapshot-end
-fix already removed.) The paper-trading status table above is
-from the last daily paper run (May 2026) and is older than the research data.
+`reports/system_status.md` is rewritten only by `python src/operations/health.py --checkout`
+/ `make health-checkout` (and `make research`, which calls that). `make health`, paper runs and
+the multi-day simulation write the local view to `results/operations/local_system_status.md`
+instead, so machine-specific portfolio numbers cannot overwrite the committed checkout report.
+The committed file is the **checkout** view: it scores only committed artifacts and treats
+gitignored paper/sim outputs as absent. In this checkout it reports overall status **`OK`**.
+Missing local operational files (`results/live/latest_signals.csv`, `results/simulation/*`
+snapshots, `results/reports/summary_report.csv`) are **INFO**, not ERROR, so a fresh clone is
+not a permanent ERROR. Data checks on the frozen research snapshot are clean through 2026-10-30
+(see "Data Checks"; `BK` is INFO, by decision). A local `python src/operations/health.py`
+(no `--checkout`) also scores those artifacts when they exist on the machine. (An earlier version
+of this paragraph described a permanent `ERROR` from treating those gitignored files as required,
+plus a staleness WARNING that the 2026-11-13 snapshot-end fix already removed, and quoted a May
+2026 paper-account snapshot from the committed status file.)
 
 ## Screenshots / Outputs
 
@@ -782,7 +778,7 @@ Key **committed** outputs for GitHub review:
 Primary written reports:
 
 - Quant research report: [`reports/quant_research_report.md`](reports/quant_research_report.md)
-- Paper-trading status: [`reports/paper_trading_status.md`](reports/paper_trading_status.md)
+- Paper-trading status pointer: [`reports/paper_trading_status.md`](reports/paper_trading_status.md) (live account: `make paper-status` → `results/paper/status.md`)
 - System status: [`reports/system_status.md`](reports/system_status.md)
 - Multi-day simulation report:
   [`reports/multi_day_simulation_report.md`](reports/multi_day_simulation_report.md)
@@ -860,9 +856,11 @@ python src/operations/health.py --checkout   # committed checkout view (make hea
 
 `monitoring.required_files` (currently `data/price_data.csv`) must exist in a checkout or health
 is ERROR. `monitoring.operational_files` are gitignored local paper/sim/report artifacts; missing
-ones are INFO and do not change overall status. `make research` rewrites the committed
-`reports/system_status.md` with `--checkout` so a local simulation run does not leave machine-specific
-portfolio numbers in the file that is reviewed on GitHub.
+ones are INFO and do not change overall status. `make health`, paper runs and the multi-day
+simulation write the local view to `results/operations/local_system_status.md`. Only
+`make health-checkout` (and `make research`, which calls it) rewrites the committed
+`reports/system_status.md`, so a local simulation run cannot leave machine-specific portfolio
+numbers in the file that is reviewed on GitHub.
 
 ### Data checks (freshness, alignment, quality, manifest)
 
@@ -1017,7 +1015,7 @@ pytest -q
 
 `pytest.ini` turns every warning into a test failure, so deprecations are fixed at the root cause
 instead of piling up (a third-party warning that cannot be fixed gets a narrow, commented
-`ignore:` line there). Status on 2026-11-14: 311 passed, 0 warnings; `python
+`ignore:` line there). Status on 2026-11-17: 315 passed, 0 warnings; `python
 scripts/run_smoke_tests.py` also runs the suite plus the doc-metric check.
 
 ## Recruiting-Relevant Skills Demonstrated

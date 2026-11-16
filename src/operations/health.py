@@ -12,8 +12,8 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from src.config import (
     ALLOCATION_SUMMARY_PATH,
+    LOCAL_SYSTEM_STATUS_REPORT_PATH,
     MULTI_DAY_NAV_PATH,
-    PAPER_TRADING_STATUS_REPORT_PATH,
     REALIZED_VS_TARGET_WEIGHTS_PATH,
     SIMULATED_EXECUTION_LOG_PATH,
     SIMULATED_LATEST_SNAPSHOT_PATH,
@@ -285,7 +285,7 @@ def build_health_status(*, checkout_only: bool = False) -> dict[str, Any]:
     return status
 
 
-def save_system_status_report(status: dict[str, Any]) -> None:
+def save_system_status_report(status: dict[str, Any]) -> Path:
     Path(SYSTEM_STATUS_JSON_PATH).parent.mkdir(parents=True, exist_ok=True)
     Path(SYSTEM_STATUS_JSON_PATH).write_text(json.dumps(status, indent=2, sort_keys=True, default=str))
 
@@ -350,18 +350,27 @@ def save_system_status_report(status: dict[str, Any]) -> None:
         "",
         "## Notes",
         "",
-        f"- Paper trading status: `{PAPER_TRADING_STATUS_REPORT_PATH}`",
+        "- Paper account status: `results/paper/status.md` (`make paper-status`; local, gitignored)",
         f"- Structured log: `{STRUCTURED_LOG_PATH}`",
     ])
-    Path(SYSTEM_STATUS_REPORT_PATH).parent.mkdir(parents=True, exist_ok=True)
-    Path(SYSTEM_STATUS_REPORT_PATH).write_text("\n".join(lines) + "\n")
+    # Checkout view is the committed reports/system_status.md. Local paper/sim
+    # health must not overwrite it with machine-specific NAV.
+    report_path = Path(
+        SYSTEM_STATUS_REPORT_PATH if scope == "checkout" else LOCAL_SYSTEM_STATUS_REPORT_PATH
+    )
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text("\n".join(lines) + "\n")
+    return report_path
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Write reports/system_status.md and results/operations/latest_system_status.json. "
-            "Without --checkout, local paper/sim artifacts are scored when present."
+            "Write a system health report and results/operations/latest_system_status.json. "
+            "Without --checkout, local paper/sim artifacts are scored when present and the "
+            "Markdown report is written to results/operations/local_system_status.md. "
+            "With --checkout, only committed artifacts are scored and the report is written "
+            "to reports/system_status.md."
         )
     )
     parser.add_argument(
@@ -369,14 +378,14 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help=(
             "Score only committed artifacts, treating gitignored paper/sim outputs as absent. "
-            "Use this when writing reports/system_status.md for the repo."
+            "Use this when writing the committed reports/system_status.md."
         ),
     )
     args = parser.parse_args(argv)
     status = build_health_status(checkout_only=args.checkout)
-    save_system_status_report(status)
+    report_path = save_system_status_report(status)
     print(f"System status: {status['overall_status']} ({status['scope']})")
-    print(f"Report saved to {SYSTEM_STATUS_REPORT_PATH}")
+    print(f"Report saved to {report_path}")
 
 
 if __name__ == "__main__":
