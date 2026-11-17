@@ -1,6 +1,5 @@
 # System Status
 
-- Generated at: 2026-11-16T16:58:02+00:00
 - Overall status: OK
 - Scope: checkout (committed artifacts only; local paper/sim outputs are gitignored)
 

@@ -123,6 +123,7 @@ def test_checkout_report_does_not_invent_a_zero_portfolio(tmp_path, monkeypatch)
     assert "No local simulation snapshot in this checkout" in text
     assert "Portfolio value: 0.00" not in text
     assert "**INFO** `operational_file`" in text
+    assert "Generated at:" not in text
 
 
 def test_local_health_report_does_not_overwrite_checkout_report(tmp_path, monkeypatch) -> None:
@@ -156,6 +157,7 @@ def test_local_health_report_does_not_overwrite_checkout_report(tmp_path, monkey
     text = local_report.read_text()
     assert "Scope: local" in text
     assert "Portfolio value: 123456.78" in text
+    assert "Generated at: 2026-11-17T00:00:00+00:00" in text
     assert json_path.exists()
 
 
@@ -177,7 +179,9 @@ def test_checkout_save_does_not_write_the_local_report(tmp_path, monkeypatch) ->
     }
     written = save_system_status_report(status)
     assert written == checkout_report
-    assert "Scope: checkout" in checkout_report.read_text()
+    checkout_text = checkout_report.read_text()
+    assert "Scope: checkout" in checkout_text
+    assert "Generated at:" not in checkout_text
     assert not local_report.exists()
 
 
@@ -196,4 +200,11 @@ def test_paper_run_status_path_is_local() -> None:
 
     assert PAPER_TRADING_STATUS_REPORT_PATH.startswith(f"{PAPER_OPS_DIR}/")
     assert not PAPER_TRADING_STATUS_REPORT_PATH.startswith("reports/")
+
+def test_checked_in_system_status_has_no_generated_at() -> None:
+    from pathlib import Path
+
+    text = Path("reports/system_status.md").read_text()
+    assert "Generated at:" not in text
+    assert "Scope: checkout" in text
 

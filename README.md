@@ -259,7 +259,7 @@ paper trading, and dashboard review. They do not enable live-money trading.
 | `make health-checkout` | Write the committed checkout health report (`reports/system_status.md`; gitignored paper/sim outputs counted as absent). |
 | `make research` | Regenerate every committed research artifact in dependency order, then verify the numbers quoted in the docs. |
 | `make doc-metrics` | Only verify quoted numbers in `README.md` / `reports/quant_research_report.md` against the result files. |
-| `make data-check` | Data freshness, alignment, quality and manifest checks; writes `reports/data_quality_report.md`. |
+| `make data-check` | Data freshness, alignment, quality and manifest checks; writes the snapshot-stable `reports/data_quality_report.md` and the live lag to `results/operations/local_data_quality_report.md`. |
 
 ## Paper Trading Workflow
 
@@ -860,12 +860,14 @@ ones are INFO and do not change overall status. `make health`, paper runs and th
 simulation write the local view to `results/operations/local_system_status.md`. Only
 `make health-checkout` (and `make research`, which calls it) rewrites the committed
 `reports/system_status.md`, so a local simulation run cannot leave machine-specific portfolio
-numbers in the file that is reviewed on GitHub.
+numbers in the file that is reviewed on GitHub. The checkout report omits a "Generated at"
+timestamp so regenerating it does not create a diff when the findings are unchanged.
 
 ### Data checks (freshness, alignment, quality, manifest)
 
-`python src/check_data.py` (or `make data-check`, which also writes
-`reports/data_quality_report.md`) runs read-only checks on `data/price_data.csv`,
+`python src/check_data.py` (or `make data-check`, which also writes the
+snapshot-stable `reports/data_quality_report.md` plus a local
+`results/operations/local_data_quality_report.md`) runs read-only checks on `data/price_data.csv`,
 `data/volume_data.csv` and `data/benchmark_prices.csv`; thresholds are in
 `config/platform_config.json` → `data_checks`. The same findings appear in `make health` and as a
 smoke-test line (FAIL on any ERROR, WARNING otherwise).
@@ -876,8 +878,12 @@ smoke-test line (FAIL on any ERROR, WARNING otherwise).
   session before `data_checks.research_snapshot_end` (`2026-11-01`, exclusive; a test keeps it equal
   to `END_DATE` in `src/config.py`), i.e. 2026-10-30: a truncated snapshot is still flagged, but
   the snapshot no longer turns into a permanent, growing WARNING in the smoke test, `make health`
-  and the data report. An INFO `snapshot` finding records how many sessions the last closed
-  session is past it. `data/paper/` and the paper gate always use the last closed session.
+  and the data report. An INFO `snapshot` finding in the committed report records that freshness
+  is measured against the snapshot's last session. The live gap to the last closed session is an
+  INFO `snapshot_lag` finding, printed by `python src/check_data.py` and written only to
+  `results/operations/local_data_quality_report.md` (gitignored), so `make data-check` /
+  `make research` do not rewrite the committed report every session. `data/paper/` and the
+  paper gate always use the last closed session.
   The daily paper runner uses `paper_stale_severity` (ERROR) instead and blocks on any
   data ERROR. Trading days come from `data_checks.calendar = "NYSE"`
   (`src/data/market_calendar.py`): weekends, the ten regular NYSE holidays with NYSE observance
@@ -910,8 +916,9 @@ smoke-test line (FAIL on any ERROR, WARNING otherwise).
   re-download, run `make research` and then `python src/check_data.py --update-manifest`.
   `tests/test_data_quality.py` fails if the checked-in data no longer match the manifest.
 
-Nothing in these checks modifies data. Findings on the current snapshot are in
-`reports/data_quality_report.md`.
+Nothing in these checks modifies data. Snapshot-stable findings are in
+`reports/data_quality_report.md`; the live lag versus the last closed session is in
+`results/operations/local_data_quality_report.md`.
 
 Findings on the checked-in snapshot (2018-01-02 → 2026-10-30, 2,220 rows): **no errors**;
 price, volume and SPY files are exactly aligned; no calendar gaps, holes inside listed histories,
@@ -1015,7 +1022,7 @@ pytest -q
 
 `pytest.ini` turns every warning into a test failure, so deprecations are fixed at the root cause
 instead of piling up (a third-party warning that cannot be fixed gets a narrow, commented
-`ignore:` line there). Status on 2026-11-17: 315 passed, 0 warnings; `python
+`ignore:` line there). Status on 2026-11-18: 318 passed, 0 warnings; `python
 scripts/run_smoke_tests.py` also runs the suite plus the doc-metric check.
 
 ## Recruiting-Relevant Skills Demonstrated

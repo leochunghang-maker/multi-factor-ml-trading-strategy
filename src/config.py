@@ -133,6 +133,9 @@ REALIZED_VS_TARGET_WEIGHTS_PATH = "results/simulation/realized_vs_target_weights
 # the committed reports/paper_trading_status.md is only a pointer to results/paper/.
 PAPER_TRADING_STATUS_REPORT_PATH = "results/paper/latest_run.md"
 LOCAL_SYSTEM_STATUS_REPORT_PATH = "results/operations/local_system_status.md"
+# Live lag of the frozen research snapshot vs the last closed NYSE session
+# (gitignored). The committed reports/data_quality_report.md is snapshot-stable.
+LOCAL_DATA_QUALITY_REPORT_PATH = "results/operations/local_data_quality_report.md"
 MULTI_DAY_SIMULATION_DIR = "results/simulation/multi_day"
 MULTI_DAY_NAV_PATH = "results/simulation/multi_day/portfolio_nav_history.csv"
 MULTI_DAY_EXPOSURE_PATH = "results/simulation/multi_day/exposure_history.csv"

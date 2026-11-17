@@ -507,9 +507,14 @@ def run_data_checks(
         findings.append(DataFinding(
             "INFO", "snapshot", "research data",
             f"frozen research snapshot (research_snapshot_end {pd.Timestamp(snapshot_end).date()}, exclusive): "
-            f"freshness is measured against its last session {as_of.date()}; the last closed session "
-            f"{last_session.date()} is {behind} trading day(s) later. Refreshing data/ changes research "
+            f"freshness is measured against its last session {as_of.date()}. Refreshing data/ changes research "
             "results (a trial); the paper workflow uses its own data dir (make paper-data)",
+        ))
+        # Wall-clock lag belongs in the local report / stdout, not the committed checkout report.
+        findings.append(DataFinding(
+            "INFO", "snapshot_lag", "research data",
+            f"the last closed session {last_session.date()} is {behind} trading day(s) later than the "
+            f"research snapshot last session {as_of.date()}",
         ))
     else:
         reference = "last_closed_session"
@@ -566,6 +571,17 @@ def overall_status(findings: list[DataFinding]) -> str:
     if any(f.severity == "WARNING" for f in findings):
         return "WARNING"
     return "OK"
+
+
+# Findings whose text changes with the wall clock. They stay in stdout and the
+# local data-quality report; the committed reports/data_quality_report.md omits them
+# so `make data-check` / `make research` do not dirty the tree every session.
+WALL_CLOCK_CHECKS = frozenset({"snapshot_lag"})
+
+
+def checkout_findings(findings: list[DataFinding]) -> list[DataFinding]:
+    """Findings that belong in the committed, snapshot-stable data-quality report."""
+    return [f for f in findings if f.check not in WALL_CLOCK_CHECKS]
 
 
 def findings_to_frame(findings: list[DataFinding]) -> pd.DataFrame:

@@ -1,6 +1,6 @@
 # Change Summary
 
-What changed in this repository, grouped by area, as of `main` on 2026-11-17. Commit hashes are
+What changed in this repository, grouped by area, as of `main` on 2026-11-18. Commit hashes are
 given so each item can be checked. Current performance numbers live in `README.md` and
 `reports/quant_research_report.md`. They are checked against the result files by
 `python src/check_doc_metrics.py`, so this file does not repeat them.
@@ -108,6 +108,13 @@ trading is local and simulated only. There is no live-money execution path.
   `results/operations/local_system_status.md`; only `--checkout` writes `reports/system_status.md`.
   The run snapshot is `results/paper/latest_run.md`, and the committed paper-status file is a
   pointer to `make paper-status` / `results/paper/status.md`. Research numbers are unaffected.
+- **Checkout reports stay snapshot-stable:** `make data-check` / `make research` wrote the
+  wall-clock last closed NYSE session (and the growing trading-day lag) into the committed
+  `reports/data_quality_report.md`, and `make health-checkout` stamped `reports/system_status.md`
+  with "Generated at", so both files changed on every regeneration even when the frozen
+  snapshot and findings were unchanged. The committed data-quality report now omits that lag
+  (an INFO `snapshot_lag` finding goes to stdout and `results/operations/local_data_quality_report.md`);
+  the checkout health report omits the timestamp. Research numbers are unaffected.
 
 ## Original structural refactor (May 2026)
 

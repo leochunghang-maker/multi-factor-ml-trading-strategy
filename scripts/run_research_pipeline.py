@@ -24,7 +24,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # files written by the data snapshot or by earlier steps.
 STEPS: list[tuple[str, list[str], str]] = [
     ("data-check", ["src/check_data.py", "--write-report"],
-     "reports/data_quality_report.md (fails on data ERRORs)"),
+     "reports/data_quality_report.md, snapshot-stable (fails on data ERRORs)"),
     ("factors", ["src/factors.py"],
      "data/daily_returns.csv, momentum_12m.csv, mean_reversion_1m.csv, forward_returns_1m.csv"),
     ("ml-dataset", ["src/ml_dataset.py"], "data/ml_dataset.csv"),

@@ -297,10 +297,13 @@ def save_system_status_report(status: dict[str, Any]) -> Path:
     else:
         scope_line = "- Scope: local (includes gitignored paper/sim outputs when present)"
 
+    # The checkout report is committed. Omit "Generated at" so make health-checkout
+    # / make research do not dirty reports/system_status.md on every run.
+    generated = [] if scope == "checkout" else [f"- Generated at: {status['generated_at']}"]
     lines = [
         "# System Status",
         "",
-        f"- Generated at: {status['generated_at']}",
+        *generated,
         f"- Overall status: {status['overall_status']}",
         scope_line,
         "",
