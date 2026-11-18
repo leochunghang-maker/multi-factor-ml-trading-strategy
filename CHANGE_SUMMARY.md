@@ -1,6 +1,6 @@
 # Change Summary
 
-What changed in this repository, grouped by area, as of `main` on 2026-11-18. Commit hashes are
+What changed in this repository, grouped by area, as of `main` on 2026-11-19. Commit hashes are
 given so each item can be checked. Current performance numbers live in `README.md` and
 `reports/quant_research_report.md`. They are checked against the result files by
 `python src/check_doc_metrics.py`, so this file does not repeat them.
@@ -115,6 +115,15 @@ trading is local and simulated only. There is no live-money execution path.
   snapshot and findings were unchanged. The committed data-quality report now omits that lag
   (an INFO `snapshot_lag` finding goes to stdout and `results/operations/local_data_quality_report.md`);
   the checkout health report omits the timestamp. Research numbers are unaffected.
+- **Committed research artifacts stay visible to git:** `.gitignore` used to ignore all of
+  `data/*.csv` and the `results/` directory, so the checked-in research snapshot and the
+  result files that back the README numbers only stayed in the tree because they had been
+  `git add -f`'d. A later `git add data/` or `git add results/` could silently skip a
+  regenerated or new artifact. The research snapshot under `data/` is now tracked normally
+  (`data/paper/` remains ignored). `results/*` still ignores local paper/sim/operations
+  outputs, with explicit exceptions for the committed research files. A test fails if a
+  tracked file in those trees is hidden by the ignore rules, or if local paper/sim paths
+  become visible. Research numbers are unaffected.
 
 ## Original structural refactor (May 2026)
 

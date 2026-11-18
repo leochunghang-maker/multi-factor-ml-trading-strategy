@@ -784,7 +784,8 @@ Primary written reports:
   [`reports/multi_day_simulation_report.md`](reports/multi_day_simulation_report.md)
 
 Local-only generated paths (produced by `make report`, paper-trading, or simulation runners;
-listed under `results/` in `.gitignore`, so they are not guaranteed on GitHub):
+gitignored under `results/*`, so they are not on GitHub). The research charts and CSVs
+listed above are committed via `.gitignore` exceptions.
 
 - `results/reports/summary_report.md`, `summary_report.csv`, drawdown / rolling Sharpe charts
 - `results/live/latest_signals.csv`
@@ -1022,7 +1023,7 @@ pytest -q
 
 `pytest.ini` turns every warning into a test failure, so deprecations are fixed at the root cause
 instead of piling up (a third-party warning that cannot be fixed gets a narrow, commented
-`ignore:` line there). Status on 2026-11-18: 318 passed, 0 warnings; `python
+`ignore:` line there). Status on 2026-11-19: 321 passed, 0 warnings; `python
 scripts/run_smoke_tests.py` also runs the suite plus the doc-metric check.
 
 ## Recruiting-Relevant Skills Demonstrated

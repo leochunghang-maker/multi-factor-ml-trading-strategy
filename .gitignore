@@ -13,25 +13,40 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
-# Generated research, simulation, execution, and operational outputs
-results/
+# Local simulation, paper-trading, and operational outputs under results/.
+# Ignore directory *contents* (not the directory itself) so committed research
+# artifacts can be re-included below. `git add results/` then stages those
+# artifacts without `git add -f`.
+results/*
+!results/benchmark_relative_report.csv
+!results/equity_curve.png
+!results/ml_predictions.csv
+!results/ml_strategy_equity_curve.png
+!results/momentum_backtest.csv
+!results/momentum_ic_results.csv
+!results/multi_factor_beta_diagnosis.csv
+!results/multi_factor_equity_curve.csv
+!results/multi_factor_results.csv
+!results/significance_report.csv
+!results/strategy_vs_benchmark.png
+!results/walk_forward_metrics.csv
+!results/walk_forward_ml_strategy.png
+!results/walk_forward_period_returns.csv
+!results/reports/
+results/reports/*
+!results/reports/nested_model_selection.csv
 reports/*.csv
 reports/*.json
 reports/*.jsonl
 reports/*.log
 reports/*.png
 
-# Generated model binaries and local datasets
+# Generated model binaries
 *.pkl
-# Paper-trading data dir (refreshed daily; never the research snapshot) and its backups
+
+# Paper-trading data dir (refreshed daily; never the research snapshot) and its backups.
+# The research snapshot CSVs under data/ are committed and are not ignored.
 data/paper/
 backups/
-data/*.csv
-!data/universe_sp500_membership.csv
-!data/universe_membership_source.json
-!data/borrow_tier_overrides.csv
-!data/borrow_tier_map.csv
-!data/sector_map.csv
-!data/sector_map_source.json
 
 .venv/

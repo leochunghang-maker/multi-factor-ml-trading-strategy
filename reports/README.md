@@ -11,7 +11,9 @@ This folder contains lightweight Markdown report snapshots that are useful for G
 
 - `data_quality_report.md`: data freshness / alignment / quality findings for the frozen research snapshot (`make data-check`). Snapshot-stable (no wall-clock last-closed-session lag); the live gap is in `results/operations/local_data_quality_report.md`.
 
-Generated charts, CSV exports, JSON logs, and model artifacts live under `results/`, which is
-ignored by Git except for a small set of research artifacts that are force-added so the README
-numbers can be checked (`make research` regenerates all of them; `python src/check_doc_metrics.py`
-verifies the quoted numbers). Bulky local run outputs stay untracked.
+Generated charts, CSV exports, JSON logs, and model artifacts live under `results/`. Local
+paper, simulation and operations outputs are gitignored; the research artifacts that back
+the README numbers are tracked via explicit `.gitignore` exceptions (no `git add -f`).
+`make research` regenerates all of them; `python src/check_doc_metrics.py` verifies the
+quoted numbers. `tests/test_tracked_research_artifacts.py` fails if a committed file in
+`data/` or `results/` is hidden by the ignore rules.
