@@ -2,9 +2,10 @@
 
 Static AST/text scan of ``src/``, ``scripts/`` and ``dashboard/``, no code is run.
 Fails if any module imports a broker SDK or a general HTTP client, or names a
-broker/order endpoint. Prices come from yfinance (``src/data_loader.py``), which is
+broker/order endpoint. Prices come from yfinance in ``src/data_loader.py`` only, which is
 the only allowed network dependency; orders are filled by the local simulated
-broker and never leave the machine.
+broker and never leave the machine. Other modules must use the local files
+that loader writes, never import yfinance themselves.
 """
 
 import ast
@@ -83,6 +84,25 @@ def test_no_broker_endpoints_or_credentials_named() -> None:
         if FORBIDDEN_TEXT.search(path.read_text())
     ]
     assert not offenders, f"broker endpoint or credential names found in: {offenders}"
+
+
+ALLOWED_YFINANCE_IMPORTS = {"src/data_loader.py"}
+
+
+def test_yfinance_is_imported_only_in_the_data_loader() -> None:
+    offenders = []
+    allowed_seen = False
+    for path in _python_files():
+        modules = _imported_modules(ast.parse(path.read_text()))
+        if not any(module == "yfinance" or module.startswith("yfinance.") for module in modules):
+            continue
+        relative = str(path.relative_to(ROOT))
+        if relative in ALLOWED_YFINANCE_IMPORTS:
+            allowed_seen = True
+            continue
+        offenders.append(relative)
+    assert allowed_seen, "src/data_loader.py should still import yfinance for price refresh"
+    assert not offenders, "yfinance must stay in src/data_loader.py only:\n" + "\n".join(offenders)
 
 
 def test_detector_flags_broker_code() -> None:

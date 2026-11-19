@@ -195,6 +195,11 @@ Run live signal generation for the simulated paper-trading workflow:
 python src/live/generate_live_signals.py
 ```
 
+This reads local prices only (prefers `data/paper/` when present, otherwise the checked-in
+research snapshot under `data/`). It does not download. Refresh paper data first with
+`make paper-data` if you want the latest closed session. A row dated after the last closed
+NYSE session is rejected, so a leftover partial intraday bar cannot be scored.
+
 The saved model (`results/live/latest_model.pkl`) is reused only while its metadata file
 (`latest_model.meta.json`: dataset SHA-256, features, target, Random Forest parameters,
 scikit-learn version, last label date) matches the current ML dataset; otherwise it is retrained.
@@ -245,7 +250,7 @@ paper trading, and dashboard review. They do not enable live-money trading.
 | `make lock` | Regenerate `requirements.lock` after editing `requirements.txt` (needs `pip install uv`). |
 | `make test` | Run the automated test suite with `pytest -q`. |
 | `make smoke` | Run the lightweight end-to-end smoke test runner. |
-| `make signals` | Generate the latest local paper-trading signal file. |
+| `make signals` | Generate the paper-trading signal file from local prices (`data/paper/` if present, else the research snapshot). Does not download. |
 | `make paper` | Run the local simulated paper-trading workflow with data refresh skipped (uses `data/paper/`). |
 | `make paper-data` | Refresh the paper data dir `data/paper/` (prices, volume, SPY through today); never touches `data/`. |
 | `make paper-data-check` | Data checks on `data/paper/` against its own manifest. |
@@ -1023,7 +1028,7 @@ pytest -q
 
 `pytest.ini` turns every warning into a test failure, so deprecations are fixed at the root cause
 instead of piling up (a third-party warning that cannot be fixed gets a narrow, commented
-`ignore:` line there). Status on 2026-11-19: 321 passed, 0 warnings; `python
+`ignore:` line there). Status on 2026-11-20: 331 passed, 0 warnings; `python
 scripts/run_smoke_tests.py` also runs the suite plus the doc-metric check.
 
 ## Recruiting-Relevant Skills Demonstrated

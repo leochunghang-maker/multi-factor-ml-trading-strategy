@@ -1,6 +1,6 @@
 # Change Summary
 
-What changed in this repository, grouped by area, as of `main` on 2026-11-19. Commit hashes are
+What changed in this repository, grouped by area, as of `main` on 2026-11-20. Commit hashes are
 given so each item can be checked. Current performance numbers live in `README.md` and
 `reports/quant_research_report.md`. They are checked against the result files by
 `python src/check_doc_metrics.py`, so this file does not repeat them.
@@ -83,6 +83,15 @@ trading is local and simulated only. There is no live-money execution path.
   its `.env.example` and its three config paths were removed. `tests/test_no_broker_connection.py`
   fails if a broker SDK, HTTP client or broker endpoint appears in `src/`, `scripts/` or
   `dashboard/`. Research numbers are unaffected.
+- **Local-only standalone signals:** `make signals` / `python src/live/generate_live_signals.py`
+  used to download recent Yahoo prices itself, so a run during US market hours could score a
+  partial intraday bar even though the paper data path already refused those bars. It now reads
+  `data/paper/` when present, otherwise the checked-in research snapshot, and rejects any row
+  after the last closed NYSE session. `src/backtests/benchmark.py` no longer falls back to a
+  live download when the local snapshot is missing; it tells you to restore or refresh the
+  file. `tests/test_no_broker_connection.py` fails if any module other than `src/data_loader.py`
+  imports yfinance. Research numbers are unaffected: with the committed snapshot present the
+  benchmark path already used local files.
 - Config: risk, execution and simulation settings come from `config/platform_config.json`
   (`2d89585`). `tests/test_config_keys.py` checks that keys read in `src/` and keys in the file
   match (`e781fe7`).

@@ -17,8 +17,10 @@ not enable live-money trading by default.
 - Do not use this repository for live-money trading without adding separate production controls,
   broker-side safeguards, key management, monitoring, and compliance review.
 - There is no broker connection or broker API client. Orders are filled by the local simulated broker
-  (`src/execution/simulated_broker.py`) and never leave the machine. `tests/test_no_broker_connection.py`
-  fails if a broker SDK, HTTP client or broker endpoint is added to `src/`, `scripts/` or `dashboard/`.
+  (`src/execution/simulated_broker.py`) and never leave the machine. The only permitted network
+  access is the Yahoo price download in `src/data_loader.py`. `tests/test_no_broker_connection.py`
+  fails if a broker SDK, HTTP client or broker endpoint is added to `src/`, `scripts/` or `dashboard/`,
+  or if any other module imports yfinance.
 
 ## If a Key Is Exposed
 

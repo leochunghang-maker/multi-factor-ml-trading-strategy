@@ -55,6 +55,11 @@ no restore step is needed before `make research`. See README, "Paper-run operati
 Offline demo without downloading: `python src/data_loader.py --paper --seed-from-research`, then
 `python scripts/run_daily_paper_trading.py --skip-data-refresh --as-of 2026-10-30`.
 
+`make signals` (or `python src/live/generate_live_signals.py`) is the same local-only path: it
+reads `data/paper/` when those prices exist, otherwise the research snapshot, and never
+downloads. Refresh with `make paper-data` for the last closed NYSE session. A leftover
+partial intraday bar is rejected.
+
 ## Scheduling the Paper Day (examples, not installed)
 
 `make paper-daily` (`scripts/run_paper_daily.py`) runs one complete simulated paper day:

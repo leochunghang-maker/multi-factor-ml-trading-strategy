@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pandas as pd
-import yfinance as yf
 
 from src.config import BENCHMARK_PRICES_PATH, PRICE_DATA_PATH
 from src.data.io import load_price_data
@@ -25,28 +24,23 @@ def _monthly_returns_from_prices(prices: pd.Series) -> pd.Series:
 
 def load_benchmark_returns(symbol: str, start, end) -> pd.Series:
     local_prices = _benchmark_prices_from_local_data(symbol)
-    if local_prices is not None:
-        local_prices = local_prices.loc[
-            (local_prices.index >= pd.Timestamp(start))
-            & (local_prices.index <= pd.Timestamp(end))
-        ]
-        return _monthly_returns_from_prices(local_prices)
-
-    benchmark = yf.download(
-        symbol,
-        start=start,
-        end=end,
-        auto_adjust=True,
-        progress=False,
-    )["Close"]
-    if benchmark.empty:
+    if local_prices is None:
         raise RuntimeError(
-            f"Benchmark data for {symbol} is unavailable locally and could not be downloaded."
+            f"Benchmark prices for {symbol} are not in {PRICE_DATA_PATH} or "
+            f"{BENCHMARK_PRICES_PATH}. Restore the research snapshot with "
+            "`git checkout -- data/benchmark_prices.csv` or refresh with "
+            "`python src/data_loader.py`. This function does not download."
         )
-    benchmark_returns = _monthly_returns_from_prices(benchmark)
-    if isinstance(benchmark_returns, pd.DataFrame):
-        benchmark_returns = benchmark_returns.squeeze()
-    return benchmark_returns
+    local_prices = local_prices.loc[
+        (local_prices.index >= pd.Timestamp(start))
+        & (local_prices.index <= pd.Timestamp(end))
+    ]
+    if local_prices.empty:
+        raise RuntimeError(
+            f"Benchmark prices for {symbol} have no rows between {start} and {end} "
+            f"in {PRICE_DATA_PATH} or {BENCHMARK_PRICES_PATH}."
+        )
+    return _monthly_returns_from_prices(local_prices)
 
 
 def load_benchmark_equity_curve(symbol: str, start, end) -> pd.Series:

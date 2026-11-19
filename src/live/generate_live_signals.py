@@ -9,43 +9,55 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 import pandas as pd
 import sklearn
-import yfinance as yf
 
 from src.config import (
     FEATURES,
     LIVE_LONG_COUNT,
     LIVE_MODEL_META_PATH,
     LIVE_MODEL_PATH,
-    LIVE_PRICE_LOOKBACK_PERIOD,
     LIVE_RESULTS_DIR,
     LIVE_SIGNALS_PATH,
     ML_DATASET_PATH,
     RANDOM_FOREST_PARAMS,
     TARGET,
-    TICKERS,
 )
-from src.data.io import load_ml_dataset
+from src.data.io import load_ml_dataset, load_price_data
+from src.data.market_calendar import last_completed_session
+from src.data.paths import DataPaths
+from src.data.quality import check_incomplete_session, data_check_settings
+from src.data.required import require_file, run_cli
 from src.data.universe import build_eligibility_mask, eligible_tickers_on_date
 from src.models.ml import train_random_forest
-from src.data.required import run_cli
 
 
-def download_latest_prices() -> pd.DataFrame:
-    # Pull enough recent history to calculate 12-month momentum, 21-day
-    # short-term momentum, and 21-day volatility for the latest available date.
-    data = yf.download(
-        TICKERS,
-        period=LIVE_PRICE_LOOKBACK_PERIOD,
-        auto_adjust=True,
-        progress=False,
+def resolve_standalone_data_paths() -> DataPaths:
+    """Prefer ``data/paper/`` when it has prices, otherwise the research snapshot.
+
+    Standalone ``make signals`` must not download. The paper workflow already
+    refreshes ``data/paper/`` through the last closed NYSE session; a fresh
+    clone can still score the checked-in research snapshot.
+    """
+    paper = DataPaths.paper()
+    if Path(paper.price_data).is_file():
+        return paper
+    research = DataPaths.research()
+    if Path(research.price_data).is_file():
+        return research
+    require_file(paper.price_data)
+    return paper
+
+
+def reject_incomplete_session_prices(prices: pd.DataFrame, now=None) -> None:
+    """Refuse rows dated after the last closed NYSE session (partial intraday bars)."""
+    settings = data_check_settings()
+    last_session = last_completed_session(
+        now=now,
+        settle_minutes=int(settings.get("session_settle_minutes", 30)),
     )
-    prices = data["Close"]
-    prices = prices.dropna(how="all")
-    if prices.empty:
-        raise RuntimeError(
-            "No live prices were downloaded. Check network access or the data vendor response."
-        )
-    return prices
+    findings = check_incomplete_session({"price_data": prices}, last_session, settings)
+    errors = [item for item in findings if item.severity == "ERROR"]
+    if errors:
+        raise RuntimeError(errors[0].message)
 
 
 def calculate_live_features(prices: pd.DataFrame) -> pd.DataFrame:
@@ -230,16 +242,26 @@ def build_live_signals(features: pd.DataFrame, model, model_reason: str) -> pd.D
 
 
 def generate_live_signals(
-    prices: pd.DataFrame | None = None, dataset_path: str = ML_DATASET_PATH
+    prices: pd.DataFrame | None = None,
+    dataset_path: str | None = None,
+    now=None,
 ) -> pd.DataFrame:
-    """Build the paper-trading signal file.
+    """Build the paper-trading signal file from local prices only.
 
-    ``prices`` (e.g. the local ``data/price_data.csv`` that passed the paper data
-    gate) makes the run offline and consistent with the gate; when omitted the
-    standalone script downloads recent prices as before.
+    ``prices`` should be the same local file the paper data gate accepted.
+    When omitted (``make signals`` / the standalone script), prices and the
+    default ML dataset come from ``data/paper/`` if present, otherwise the
+    research snapshot under ``data/``. This function never downloads.
+    Rows dated after the last closed NYSE session are rejected.
     """
     if prices is None:
-        prices = download_latest_prices()
+        paths = resolve_standalone_data_paths()
+        prices = load_price_data(paths.price_data)
+        if dataset_path is None:
+            dataset_path = paths.ml_dataset
+    elif dataset_path is None:
+        dataset_path = ML_DATASET_PATH
+    reject_incomplete_session_prices(prices, now=now)
     eligibility = build_eligibility_mask(prices)
     latest_date = prices.dropna(how="all").index.max()
     allowed = set(eligible_tickers_on_date(eligibility, latest_date))
@@ -259,12 +281,17 @@ def generate_live_signals(
 
 
 def main() -> None:
-    signals = generate_live_signals()
+    paths = resolve_standalone_data_paths()
+    signals = generate_live_signals(
+        prices=load_price_data(paths.price_data),
+        dataset_path=paths.ml_dataset,
+    )
     print("Live signal generation completed.")
     print()
     print(signals.head(LIVE_LONG_COUNT).to_string(index=False))
     print()
     print(f"Signals saved to {LIVE_SIGNALS_PATH}")
+    print(f"Prices and model training data came from {paths.root}/ (no download).")
     print("No broker connection was used and no trades were placed.")
 
 
