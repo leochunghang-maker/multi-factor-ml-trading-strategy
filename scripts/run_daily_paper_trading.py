@@ -1,6 +1,7 @@
 import argparse
 import sys
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -125,7 +126,7 @@ def validate_turnover(snapshot: dict) -> list[str]:
 
 def write_failure_status(message: str) -> None:
     snapshot = {
-        "timestamp": pd.Timestamp.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
         "price_date": "unavailable",
         "signal_date": "unavailable",
         "portfolio_value": 0.0,

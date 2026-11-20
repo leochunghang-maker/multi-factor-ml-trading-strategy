@@ -1,12 +1,26 @@
-"""Shared, read-only fixtures for the slow reported-book rebuild.
+"""Shared test fixtures.
 
-Rebuilding the reported multi-factor book from the checked-in data takes a few
-seconds, so it is built once per test session and shared by
-tests/test_reported_book.py and tests/test_constraint_binding.py. Tests must
-not mutate the returned frames.
+Outbound network is blocked for the whole session: tests must use local files,
+not live Yahoo downloads. The reported multi-factor book is built once and
+shared by tests/test_reported_book.py and tests/test_constraint_binding.py;
+tests must not mutate the returned frames.
 """
 
+from __future__ import annotations
+
 import pytest
+
+from tests.network_guard import install as install_network_guard
+from tests.network_guard import uninstall as uninstall_network_guard
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _block_outbound_network():
+    install_network_guard()
+    try:
+        yield
+    finally:
+        uninstall_network_guard()
 
 
 @pytest.fixture(scope="session")

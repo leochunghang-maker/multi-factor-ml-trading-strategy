@@ -1,6 +1,6 @@
 # Change Summary
 
-What changed in this repository, grouped by area, as of `main` on 2026-11-20. Commit hashes are
+What changed in this repository, grouped by area, as of `main` on 2026-11-21. Commit hashes are
 given so each item can be checked. Current performance numbers live in `README.md` and
 `reports/quant_research_report.md`. They are checked against the result files by
 `python src/check_doc_metrics.py`, so this file does not repeat them.
@@ -133,6 +133,13 @@ trading is local and simulated only. There is no live-money execution path.
   outputs, with explicit exceptions for the committed research files. A test fails if a
   tracked file in those trees is hidden by the ignore rules, or if local paper/sim paths
   become visible. Research numbers are unaffected.
+- **Tests cannot reach the internet:** pytest now blocks outbound network access, including
+  yfinance's curl_cffi path, so a regression that reintroduces a live download fails the suite
+  instead of hitting Yahoo. Loopback and Unix sockets stay allowed. The paper-run failure path
+  also dropped deprecated `pd.Timestamp.utcnow()` (Pandas 3.1 warns, and warnings fail the
+  suite) in favour of `datetime.now(UTC)`, and a test checks that a failed step writes
+  `results/paper/latest_run.md` rather than the committed paper-status pointer. Research
+  numbers are unaffected.
 
 ## Original structural refactor (May 2026)
 

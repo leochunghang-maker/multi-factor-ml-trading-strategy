@@ -1028,7 +1028,9 @@ pytest -q
 
 `pytest.ini` turns every warning into a test failure, so deprecations are fixed at the root cause
 instead of piling up (a third-party warning that cannot be fixed gets a narrow, commented
-`ignore:` line there). Status on 2026-11-20: 331 passed, 0 warnings; `python
+`ignore:` line there). Pytest also blocks outbound internet access (socket, urllib, requests,
+and curl_cffi / yfinance) so a test cannot quietly download prices; loopback and Unix sockets
+still work. Status on 2026-11-21: 338 passed, 0 warnings; `python
 scripts/run_smoke_tests.py` also runs the suite plus the doc-metric check.
 
 ## Recruiting-Relevant Skills Demonstrated

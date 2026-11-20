@@ -20,7 +20,9 @@ not enable live-money trading by default.
   (`src/execution/simulated_broker.py`) and never leave the machine. The only permitted network
   access is the Yahoo price download in `src/data_loader.py`. `tests/test_no_broker_connection.py`
   fails if a broker SDK, HTTP client or broker endpoint is added to `src/`, `scripts/` or `dashboard/`,
-  or if any other module imports yfinance.
+  or if any other module imports yfinance. Pytest itself blocks outbound internet
+  access (including curl_cffi, which yfinance uses instead of Python sockets) so the
+  test suite cannot download prices.
 
 ## If a Key Is Exposed
 
