@@ -1,6 +1,6 @@
 # Change Summary
 
-What changed in this repository, grouped by area, as of `main` on 2026-11-21. Commit hashes are
+What changed in this repository, grouped by area, as of `main` on 2026-11-24. Commit hashes are
 given so each item can be checked. Current performance numbers live in `README.md` and
 `reports/quant_research_report.md`. They are checked against the result files by
 `python src/check_doc_metrics.py`, so this file does not repeat them.
@@ -133,6 +133,12 @@ trading is local and simulated only. There is no live-money execution path.
   outputs, with explicit exceptions for the committed research files. A test fails if a
   tracked file in those trees is hidden by the ignore rules, or if local paper/sim paths
   become visible. Research numbers are unaffected.
+- **NYSE early closes use the 13:00 close:** `last_completed_session` treated every trading
+  day as a 16:00 New York close, including half days. After a 1:00 p.m. close, a complete bar
+  (day after Thanksgiving, Christmas Eve, or 3 July when that date is a trading day) could be
+  delayed until 16:30 and, if already present in `data/paper/`, rejected by the paper data gate
+  as a partial intraday session. The calendar now uses 13:00 + the 30-minute settle buffer on
+  those days. Research numbers are unaffected.
 - **Tests cannot reach the internet:** pytest now blocks outbound network access, including
   yfinance's curl_cffi path, so a regression that reintroduces a live download fails the suite
   instead of hitting Yahoo. Loopback and Unix sockets stay allowed. The paper-run failure path

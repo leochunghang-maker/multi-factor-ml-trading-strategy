@@ -899,15 +899,18 @@ smoke-test line (FAIL on any ERROR, WARNING otherwise).
   price history (2018-01-02 → 2026-10-30). `"weekdays"` restores plain weekday counting.
   `python src/check_data.py --paper` runs the same checks on `data/paper/` against its own
   manifest.
-- **Closed sessions only:** "today" means the latest NYSE session whose 16:00 New York close
-  plus `data_checks.session_settle_minutes = 30` has passed (`last_completed_session` in
-  `src/data/market_calendar.py`), taken in New York time rather than the local date. The paper
-  refresh (`src/data_loader.py --paper`, default `--end today`) downloads only through that
-  session, and without `--as-of` the checks flag any row dated after it as a partial intraday bar
-  (`incomplete_session_severity = ERROR`, so the paper gate blocks). Before this, a run during US
-  market hours (for example 01:00 in Hong Kong is midday in New York) filled and marked the paper
-  book at that day's intraday price and keyed the run by that date, so the rerun after the close
-  was skipped. Early closes are read as 16:00, which only delays a half day's bar.
+- **Closed sessions only:** "today" means the latest NYSE session whose New York close
+  (16:00, or 13:00 on an early-close day) plus `data_checks.session_settle_minutes = 30` has
+  passed (`last_completed_session` in `src/data/market_calendar.py`), taken in New York time
+  rather than the local date. The paper refresh (`src/data_loader.py --paper`, default `--end
+  today`) downloads only through that session, and without `--as-of` the checks flag any row
+  dated after it as a partial intraday bar (`incomplete_session_severity = ERROR`, so the
+  paper gate blocks). Before this, a run during US market hours (for example 01:00 in Hong
+  Kong is midday in New York) filled and marked the paper book at that day's intraday price
+  and keyed the run by that date, so the rerun after the close was skipped. Early closes
+  follow the published NYSE half-day rules (day after Thanksgiving; 3 July when that date is
+  a trading day; 24 December when that date is a trading day) so a complete 1:00 p.m. bar is
+  accepted after 13:30 New York time, not held until 16:30.
 - **Alignment (ERROR):** volume and benchmark start/end dates and their date sets must match
   `price_data.csv` exactly (`max_end_date_gap_trading_days = 0`, `max_missing_aligned_dates = 0`).
 - **Quality:** unparseable / duplicate / unsorted dates and non-positive prices or negative
@@ -1030,7 +1033,7 @@ pytest -q
 instead of piling up (a third-party warning that cannot be fixed gets a narrow, commented
 `ignore:` line there). Pytest also blocks outbound internet access (socket, urllib, requests,
 and curl_cffi / yfinance) so a test cannot quietly download prices; loopback and Unix sockets
-still work. Status on 2026-11-21: 338 passed, 0 warnings; `python
+still work. Status on 2026-11-24: 358 passed, 0 warnings; `python
 scripts/run_smoke_tests.py` also runs the suite plus the doc-metric check.
 
 ## Recruiting-Relevant Skills Demonstrated

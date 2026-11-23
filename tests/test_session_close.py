@@ -29,7 +29,13 @@ def _ny(text: str) -> pd.Timestamp:
     (_ny("2026-11-10 08:00"), "2026-11-09"),   # pre-open next day
     (_ny("2026-11-08 12:00"), "2026-11-06"),   # Sunday
     (_ny("2026-11-26 18:00"), "2026-11-25"),   # Thanksgiving (closed all day)
-    (_ny("2026-11-27 17:00"), "2026-11-27"),   # day after Thanksgiving (early close, read as 16:00)
+    (_ny("2026-11-27 13:29"), "2026-11-25"),   # early close, still inside the 30-min settle buffer
+    (_ny("2026-11-27 13:30"), "2026-11-27"),   # day after Thanksgiving: 13:00 close + 30 min
+    (_ny("2026-11-27 17:00"), "2026-11-27"),   # same day, after the regular 16:00 close
+    (_ny("2026-12-24 13:29"), "2026-12-23"),   # Christmas Eve early close, inside settle buffer
+    (_ny("2026-12-24 13:30"), "2026-12-24"),
+    (_ny("2026-07-03 17:00"), "2026-07-02"),   # Independence Day observed: full holiday, not early close
+    (_ny("2025-07-03 13:30"), "2025-07-03"),   # 2025-07-03 is an early close
     (_ny("2026-01-02 09:00"), "2025-12-31"),   # pre-open after New Year's Day
 ])
 def test_last_completed_session(now, expected) -> None:
@@ -51,6 +57,8 @@ def test_previous_trading_day_skips_weekends_and_holidays() -> None:
 def test_paper_refresh_end_excludes_the_open_session() -> None:
     assert resolve_end_date("today", now=_ny("2026-11-09 12:10")) == "2026-11-07"  # exclusive: through Fri
     assert resolve_end_date("today", now=_ny("2026-11-09 17:00")) == "2026-11-10"  # through Mon
+    assert resolve_end_date("today", now=_ny("2026-11-27 13:29")) == "2026-11-26"  # exclusive: through Wed
+    assert resolve_end_date("today", now=_ny("2026-11-27 13:30")) == "2026-11-28"  # through the early close
     assert resolve_end_date("2026-10-31") == "2026-10-31"
 
 
@@ -92,3 +100,15 @@ def test_explicit_as_of_is_a_backdated_check_without_the_wall_clock(tmp_path) ->
     findings, summary = run_data_checks(as_of="2026-11-09", config=GATE_CONFIG, root=tmp_path)
     assert summary["last_closed_session"] is None
     assert not [f for f in findings if f.check == "incomplete_session"]
+
+
+def test_gate_accepts_a_completed_early_close_bar(tmp_path) -> None:
+    _write_data(tmp_path, "2026-11-27")
+    still_open = paper_data_gate(config=GATE_CONFIG, root=tmp_path, now=_ny("2026-11-27 13:20"))
+    assert still_open["blocked"] and still_open["status"] == "ERROR"
+    assert still_open["as_of"] == "2026-11-25"
+    assert any("partial intraday bar" in e for e in still_open["errors"])
+
+    after_early_close = paper_data_gate(config=GATE_CONFIG, root=tmp_path, now=_ny("2026-11-27 13:30"))
+    assert not after_early_close["blocked"], after_early_close["errors"]
+    assert after_early_close["as_of"] == "2026-11-27"

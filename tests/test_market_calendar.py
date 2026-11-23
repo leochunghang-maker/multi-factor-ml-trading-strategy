@@ -6,10 +6,14 @@ import pandas as pd
 import pytest
 
 from src.data.market_calendar import (
+    EARLY_CLOSE,
+    REGULAR_CLOSE,
     easter_sunday,
     holidays_between,
     is_trading_day,
+    nyse_early_closes,
     nyse_holidays,
+    session_close_time,
     trading_days,
     trading_days_between,
 )
@@ -80,3 +84,46 @@ def test_calendar_matches_checked_in_price_history() -> None:
     expected = trading_days(prices.index.min(), prices.index.max())
     assert prices.index.difference(expected).empty, "price rows on NYSE holidays/weekends"
     assert expected.difference(prices.index).empty, "NYSE trading days missing from price history"
+
+# Official NYSE 1:00 p.m. ET early closes, 2017-2028 (ICE/NYSE published calendars).
+PUBLISHED_EARLY_CLOSES = {
+    2017: {"2017-07-03": "Day before Independence Day", "2017-11-24": "Day after Thanksgiving"},
+    2018: {"2018-07-03": "Day before Independence Day", "2018-11-23": "Day after Thanksgiving",
+           "2018-12-24": "Christmas Eve"},
+    2019: {"2019-07-03": "Day before Independence Day", "2019-11-29": "Day after Thanksgiving",
+           "2019-12-24": "Christmas Eve"},
+    2020: {"2020-11-27": "Day after Thanksgiving", "2020-12-24": "Christmas Eve"},
+    2021: {"2021-11-26": "Day after Thanksgiving"},
+    2022: {"2022-11-25": "Day after Thanksgiving"},
+    2023: {"2023-07-03": "Day before Independence Day", "2023-11-24": "Day after Thanksgiving"},
+    2024: {"2024-07-03": "Day before Independence Day", "2024-11-29": "Day after Thanksgiving",
+           "2024-12-24": "Christmas Eve"},
+    2025: {"2025-07-03": "Day before Independence Day", "2025-11-28": "Day after Thanksgiving",
+           "2025-12-24": "Christmas Eve"},
+    2026: {"2026-11-27": "Day after Thanksgiving", "2026-12-24": "Christmas Eve"},
+    2027: {"2027-11-26": "Day after Thanksgiving"},
+    2028: {"2028-07-03": "Day before Independence Day", "2028-11-24": "Day after Thanksgiving"},
+}
+
+
+@pytest.mark.parametrize("year", sorted(PUBLISHED_EARLY_CLOSES))
+def test_nyse_early_closes_match_published_calendars(year: int) -> None:
+    expected = {date.fromisoformat(day): name for day, name in PUBLISHED_EARLY_CLOSES[year].items()}
+    assert nyse_early_closes(year) == expected
+    for day, name in expected.items():
+        assert is_trading_day(day)
+        assert session_close_time(day) == EARLY_CLOSE
+        assert day not in nyse_holidays(year)
+        assert name
+
+
+def test_session_close_time_is_regular_except_on_early_close_days() -> None:
+    assert session_close_time("2026-11-25") == REGULAR_CLOSE  # Wednesday before Thanksgiving
+    assert session_close_time("2026-11-27") == EARLY_CLOSE
+    assert session_close_time("2026-11-27", calendar="weekdays") == REGULAR_CLOSE
+    assert session_close_time("2026-07-02") == REGULAR_CLOSE  # 2026-07-03 is the observed holiday
+    assert session_close_time("2026-12-23") == REGULAR_CLOSE
+    assert session_close_time("2026-12-24") == EARLY_CLOSE
+    assert session_close_time("2027-12-23") == REGULAR_CLOSE  # 2027-12-24 is observed Christmas
+    assert "2027-12-24" not in {d.isoformat() for d in nyse_early_closes(2027)}
+    assert date(2027, 12, 24) in nyse_holidays(2027)
