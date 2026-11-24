@@ -1,6 +1,6 @@
 # Change Summary
 
-What changed in this repository, grouped by area, as of `main` on 2026-11-24. Commit hashes are
+What changed in this repository, grouped by area, as of `main` on 2026-11-25. Commit hashes are
 given so each item can be checked. Current performance numbers live in `README.md` and
 `reports/quant_research_report.md`. They are checked against the result files by
 `python src/check_doc_metrics.py`, so this file does not repeat them.
@@ -146,6 +146,13 @@ trading is local and simulated only. There is no live-money execution path.
   suite) in favour of `datetime.now(UTC)`, and a test checks that a failed step writes
   `results/paper/latest_run.md` rather than the committed paper-status pointer. Research
   numbers are unaffected.
+
+- **Interview guide matches the current platform:** `docs/quant_interview_guide.md` still
+  described the earlier stack (no point-in-time eligibility, no explicit cost/borrow/impact
+  model, no nested selection or trial log). It now matches the code and README, including
+  residual-survivorship language, the trial-aware significance discussion, and the conclusion
+  that none of the current strategies shows significant alpha. A test fails if the stale
+  claims return. Research numbers are unaffected.
 
 ## Original structural refactor (May 2026)
 
