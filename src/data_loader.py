@@ -4,7 +4,9 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import json
+import os
 import shutil
+import uuid
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -20,6 +22,12 @@ from src.config import (
 from src.data.paths import DataPaths
 from src.data.universe import drop_empty_price_columns
 
+# Staging / rollback folders for paper refreshes. They live under the paper dir
+# and are removed after each attempt (including leftover dirs from a crashed run).
+_PAPER_REFRESH_PREFIX = ".refresh-"
+_PAPER_INPUT_ATTRS = ("price_data", "volume_data", "benchmark_prices", "benchmark_source")
+_PAPER_SNAPSHOT_ATTRS = _PAPER_INPUT_ATTRS + ("manifest",)
+
 
 def _download(tickers=TICKERS, start=START_DATE, end=END_DATE, progress: bool = True) -> pd.DataFrame:
     return yf.download(
@@ -29,6 +37,12 @@ def _download(tickers=TICKERS, start=START_DATE, end=END_DATE, progress: bool = 
         auto_adjust=True,
         progress=progress,
     )
+
+
+def _require_download(data: pd.DataFrame, label: str, end: str) -> pd.DataFrame:
+    if data is None or len(data) == 0:
+        raise ValueError(f"yfinance download returned no {label} ({START_DATE} to {end})")
+    return data
 
 
 def extract_volume_frame(data: pd.DataFrame, tickers=TICKERS) -> pd.DataFrame:
@@ -87,7 +101,7 @@ def download_price_data(
     print(f"Downloading price data ({START_DATE} to {end}, end exclusive) into {paths.root}/ ...")
     excluded = _excluded_symbols()
     tickers = [t for t in TICKERS if t not in excluded] if skip_excluded else TICKERS
-    data = _download(tickers=tickers, end=end, progress=progress)
+    data = _require_download(_download(tickers=tickers, end=end, progress=progress), "price data", end)
     # Excluded symbols (recorded decisions, e.g. BK) stay all-NaN so a refresh
     # never changes the universe; other empty columns are dropped as before.
     prices = drop_empty_price_columns(data["Close"].drop(columns=list(excluded), errors="ignore"))
@@ -105,7 +119,8 @@ def download_price_data(
 
 def download_volume_data(end: str = END_DATE, paths: DataPaths | None = None):
     """Download only share volume, leaving the existing price panel untouched."""
-    return save_volume_data(_download(end=end), path=_paths(paths).volume_data)
+    data = _require_download(_download(end=end), "volume data", end)
+    return save_volume_data(data, path=_paths(paths).volume_data)
 
 
 def download_benchmark_data(
@@ -118,11 +133,13 @@ def download_benchmark_data(
     are reproducible offline from checked-in data.
     """
     paths = _paths(paths)
-    data = _download(tickers=[symbol], end=end, progress=progress)
+    data = _require_download(_download(tickers=[symbol], end=end, progress=progress), f"{symbol} data", end)
     close = data["Close"]
     if isinstance(close, pd.Series):
         close = close.to_frame(name=symbol)
     close = close.reindex(columns=[symbol]).dropna(how="all")
+    if close.empty:
+        raise ValueError(f"yfinance download returned no {symbol} data ({START_DATE} to {end})")
     close.index.name = "Date"
     Path(paths.benchmark_prices).parent.mkdir(parents=True, exist_ok=True)
     close.to_csv(paths.benchmark_prices)
@@ -161,14 +178,146 @@ def write_data_manifest(paths: DataPaths, note: str) -> dict:
     return manifest
 
 
+def _cleanup_paper_refresh_dirs(root: Path) -> None:
+    root = Path(root)
+    if not root.is_dir():
+        return
+    for path in root.iterdir():
+        if path.is_dir() and path.name.startswith(_PAPER_REFRESH_PREFIX):
+            shutil.rmtree(path, ignore_errors=True)
+
+
+def _load_dated_panel(path: str | Path) -> pd.DataFrame:
+    frame = pd.read_csv(path, index_col=0, parse_dates=True)
+    frame.index = pd.DatetimeIndex(frame.index).tz_localize(None).normalize()
+    return frame
+
+
+def _validate_paper_refresh(staging: DataPaths, previous: DataPaths, end: str) -> None:
+    """Reject a staged download that is empty, misaligned, or drops already-held history.
+
+    Failures leave the previous paper snapshot in place (the caller installs only
+    after this returns). Already-held sessions strictly before the exclusive end
+    date must still be present — a truncated Yahoo response must not replace a
+    longer good snapshot.
+    """
+    kept = "the previous paper snapshot was left unchanged"
+    needed = [Path(getattr(staging, name)) for name in _PAPER_INPUT_ATTRS]
+    missing = [str(path) for path in needed if not path.exists() or path.stat().st_size == 0]
+    if missing:
+        raise ValueError(f"paper refresh produced missing or empty files: {', '.join(missing)}; {kept}")
+
+    prices = _load_dated_panel(staging.price_data)
+    volumes = _load_dated_panel(staging.volume_data)
+    benchmark = _load_dated_panel(staging.benchmark_prices)
+    if prices.empty or volumes.empty or benchmark.empty:
+        raise ValueError(f"paper refresh produced an empty price, volume or benchmark file; {kept}")
+    if not prices.index.equals(volumes.index):
+        raise ValueError(f"paper refresh price and volume dates do not match; {kept}")
+    if list(prices.columns) != list(volumes.columns):
+        raise ValueError(f"paper refresh price and volume columns do not match; {kept}")
+
+    from src.data.market_calendar import previous_trading_day
+
+    expected = pd.Timestamp(previous_trading_day(end)).normalize()
+    last = pd.Timestamp(prices.index.max()).normalize()
+    if last != expected:
+        raise ValueError(
+            f"paper refresh last date is {last.date()}, expected the last NYSE session "
+            f"before exclusive end {end} ({expected.date()}); {kept}"
+        )
+    bench_last = pd.Timestamp(benchmark.index.max()).normalize()
+    if bench_last != last:
+        raise ValueError(
+            f"paper refresh benchmark last date is {bench_last.date()}, expected {last.date()}; {kept}"
+        )
+
+    previous_prices = Path(previous.price_data)
+    if previous_prices.exists() and previous_prices.stat().st_size > 0:
+        old = _load_dated_panel(previous_prices)
+        if not old.empty:
+            held = old.index[old.index < pd.Timestamp(end).normalize()]
+            missing_dates = held.difference(prices.index)
+            if len(missing_dates):
+                first = pd.Timestamp(missing_dates.min()).date()
+                raise ValueError(
+                    f"paper refresh dropped {len(missing_dates)} already-held session(s) "
+                    f"(first missing {first}); {kept}"
+                )
+            held_columns = [column for column in old.columns if old[column].notna().any()]
+            missing_columns = [column for column in held_columns if column not in prices.columns]
+            if missing_columns:
+                raise ValueError(
+                    f"paper refresh dropped already-held symbols: {', '.join(missing_columns)}; {kept}"
+                )
+
+
+def _backup_paper_snapshot(paths: DataPaths, backup_root: Path) -> None:
+    backup_root.mkdir(parents=True, exist_ok=True)
+    index: dict[str, str | None] = {}
+    for src in [Path(getattr(paths, name)) for name in _PAPER_SNAPSHOT_ATTRS]:
+        if src.exists():
+            shutil.copy2(src, backup_root / src.name)
+            index[str(src)] = src.name
+        else:
+            index[str(src)] = None
+    (backup_root / "index.json").write_text(json.dumps(index))
+
+
+def _restore_paper_snapshot(backup_root: Path) -> None:
+    index = json.loads((backup_root / "index.json").read_text())
+    for original, saved in index.items():
+        target = Path(original)
+        if saved is None:
+            if target.exists():
+                target.unlink()
+            continue
+        tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.restore")
+        shutil.copy2(backup_root / saved, tmp)
+        os.replace(tmp, target)
+
+
+def _install_paper_inputs(staging: DataPaths, dest: DataPaths) -> None:
+    Path(dest.root).mkdir(parents=True, exist_ok=True)
+    for name in _PAPER_INPUT_ATTRS:
+        src, target = Path(getattr(staging, name)), Path(getattr(dest, name))
+        tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.install")
+        shutil.copy2(src, tmp)
+        os.replace(tmp, target)
+
+
 def refresh_paper_data(end: str | None = "today", paths: DataPaths | None = None) -> DataPaths:
-    """Full aligned refresh (prices, volume, SPY) into the paper dir; never touches data/."""
+    """Full aligned refresh (prices, volume, SPY) into the paper dir; never touches data/.
+
+    Downloads into a staging folder under the paper dir and replaces the current
+    snapshot only after the files validate (non-empty, price/volume aligned, last
+    date is the last NYSE session before the exclusive end, already-held history
+    retained). A failed or truncated download leaves the previous snapshot in
+    place. Derived paper files (features, ML dataset) are not touched.
+    """
     paths = paths or DataPaths.paper()
     end = resolve_end_date(end)
-    # Quiet: no yfinance progress bar in paper logs, and excluded symbols are not requested.
-    download_price_data(end=end, paths=paths, progress=False, skip_excluded=True)
-    download_benchmark_data(end=end, paths=paths, progress=False)
-    write_data_manifest(paths, f"yfinance download, end exclusive {end}")
+    root = Path(paths.root)
+    _cleanup_paper_refresh_dirs(root)
+    token = uuid.uuid4().hex
+    staging_root = root / f"{_PAPER_REFRESH_PREFIX}{token}"
+    backup_root = root / f"{_PAPER_REFRESH_PREFIX}prev-{token}"
+    staging = DataPaths(str(staging_root), "paper")
+    try:
+        # Quiet: no yfinance progress bar in paper logs, and excluded symbols are not requested.
+        download_price_data(end=end, paths=staging, progress=False, skip_excluded=True)
+        download_benchmark_data(end=end, paths=staging, progress=False)
+        _validate_paper_refresh(staging, paths, end)
+        _backup_paper_snapshot(paths, backup_root)
+        try:
+            _install_paper_inputs(staging, paths)
+            write_data_manifest(paths, f"yfinance download, end exclusive {end}")
+        except Exception:
+            _restore_paper_snapshot(backup_root)
+            raise
+    finally:
+        shutil.rmtree(staging_root, ignore_errors=True)
+        shutil.rmtree(backup_root, ignore_errors=True)
     return paths
 
 

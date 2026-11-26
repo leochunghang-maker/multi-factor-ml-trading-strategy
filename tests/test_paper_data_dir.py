@@ -115,3 +115,77 @@ def test_paper_refresh_is_quiet_and_skips_excluded_symbols(tmp_path, monkeypatch
     assert calls and all(progress is False for _, progress in calls)
     assert "BK" not in calls[0][0]  # excluded symbol is not requested ...
     assert pd.read_csv(paths.price_data, index_col=0)["BK"].isna().all()  # ... and still blank in the file
+
+
+def _snapshot_inputs(paths: DataPaths) -> dict[str, str]:
+    return _digest([
+        paths.price_data, paths.volume_data, paths.benchmark_prices,
+        paths.benchmark_source, paths.manifest,
+    ])
+
+
+def _assert_no_refresh_dirs(root) -> None:
+    leftovers = [p.name for p in Path(root).glob(".refresh-*")]
+    assert not leftovers, leftovers
+
+
+def test_paper_refresh_keeps_previous_snapshot_if_download_fails(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(loader, "_download", _fake_download)
+    dest = DataPaths.paper(tmp_path / "paper")
+    loader.refresh_paper_data(end="2026-11-07", paths=dest)
+    (Path(dest.root) / "daily_returns.csv").write_text("derived,should,stay\n")
+    before = _snapshot_inputs(dest)
+    derived = (Path(dest.root) / "daily_returns.csv").read_bytes()
+    calls = {"n": 0}
+
+    def boom(tickers=c.TICKERS, start=None, end=None, progress=True):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise RuntimeError("yahoo down")
+        return _fake_download(tickers, start, end, progress)
+
+    monkeypatch.setattr(loader, "_download", boom)
+    with pytest.raises(RuntimeError, match="yahoo down"):
+        loader.refresh_paper_data(end="2026-11-07", paths=dest)
+    assert _snapshot_inputs(dest) == before
+    assert (Path(dest.root) / "daily_returns.csv").read_bytes() == derived
+    _assert_no_refresh_dirs(dest.root)
+
+
+def test_paper_refresh_rejects_truncated_history(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(loader, "_download", _fake_download)
+    dest = DataPaths.paper(tmp_path / "paper")
+    loader.refresh_paper_data(end="2026-11-07", paths=dest)
+    before = _snapshot_inputs(dest)
+
+    def short(tickers=c.TICKERS, start=None, end=None, progress=True):
+        return _fake_download(tickers, start, end, progress).iloc[-5:]
+
+    monkeypatch.setattr(loader, "_download", short)
+    with pytest.raises(ValueError, match="dropped .* already-held session"):
+        loader.refresh_paper_data(end="2026-11-07", paths=dest)
+    assert _snapshot_inputs(dest) == before
+    _assert_no_refresh_dirs(dest.root)
+
+
+def test_paper_refresh_rejects_empty_download(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(loader, "_download", _fake_download)
+    dest = DataPaths.paper(tmp_path / "paper")
+    loader.refresh_paper_data(end="2026-11-07", paths=dest)
+    before = _snapshot_inputs(dest)
+    monkeypatch.setattr(loader, "_download", lambda *args, **kwargs: pd.DataFrame())
+    with pytest.raises(ValueError, match="no price data"):
+        loader.refresh_paper_data(end="2026-11-07", paths=dest)
+    assert _snapshot_inputs(dest) == before
+    _assert_no_refresh_dirs(dest.root)
+
+
+def test_paper_refresh_cleans_leftover_staging(tmp_path, monkeypatch) -> None:
+    dest = tmp_path / "paper"
+    leftover = dest / ".refresh-dead"
+    leftover.mkdir(parents=True)
+    (leftover / "junk.csv").write_text("stale\n")
+    monkeypatch.setattr(loader, "_download", _fake_download)
+    loader.refresh_paper_data(end="2026-11-07", paths=DataPaths.paper(dest))
+    assert not leftover.exists()
+    _assert_no_refresh_dirs(dest)

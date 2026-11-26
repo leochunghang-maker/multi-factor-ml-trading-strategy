@@ -29,7 +29,8 @@ The workflow performs:
 1. data refresh into the paper data dir `data/paper/` (`src/data_loader.py --paper`: prices, volume
    and SPY through the last closed NYSE session, i.e. the New York close (16:00, or 13:00 on an
    early-close day) + 30 min settle, plus a paper
-   manifest; skip with `--skip-data-refresh`),
+   manifest). The download is staged and replaces the previous snapshot only after it validates;
+   a failed or truncated response leaves the last good files in place (skip with `--skip-data-refresh`),
 2. pre-run data gate on `data/paper/` (staleness in NYSE trading days, a partial intraday bar dated
    after the last closed session, and any other data ERROR block the run; exit code 2),
 3. idempotency check (a completed signal date is skipped; `--force` replaces the latest run),

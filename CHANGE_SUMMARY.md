@@ -1,6 +1,6 @@
 # Change Summary
 
-What changed in this repository, grouped by area, as of `main` on 2026-11-25. Commit hashes are
+What changed in this repository, grouped by area, as of `main` on 2026-11-27. Commit hashes are
 given so each item can be checked. Current performance numbers live in `README.md` and
 `reports/quant_research_report.md`. They are checked against the result files by
 `python src/check_doc_metrics.py`, so this file does not repeat them.
@@ -153,6 +153,14 @@ trading is local and simulated only. There is no live-money execution path.
   residual-survivorship language, the trial-aware significance discussion, and the conclusion
   that none of the current strategies shows significant alpha. A test fails if the stale
   claims return. Research numbers are unaffected.
+- **Paper refresh is staged:** `python src/data_loader.py --paper` / `make paper-data` used to write
+  prices, volume and the benchmark directly into `data/paper/`. A failed Yahoo call after the price
+  file was written, or a truncated panel, could leave a half-updated or shorter snapshot for the
+  next data gate and paper run. The refresh now downloads into a staging folder, checks that the
+  files are non-empty and aligned, that the last date is the last NYSE session before the exclusive
+  end, and that already-held history is still present, then replaces the previous snapshot (rolling
+  back if the install itself fails). Derived feature files are not touched. Research numbers are
+  unaffected.
 
 ## Original structural refactor (May 2026)
 

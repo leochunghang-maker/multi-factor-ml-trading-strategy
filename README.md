@@ -252,7 +252,7 @@ paper trading, and dashboard review. They do not enable live-money trading.
 | `make smoke` | Run the lightweight end-to-end smoke test runner. |
 | `make signals` | Generate the paper-trading signal file from local prices (`data/paper/` if present, else the research snapshot). Does not download. |
 | `make paper` | Run the local simulated paper-trading workflow with data refresh skipped (uses `data/paper/`). |
-| `make paper-data` | Refresh the paper data dir `data/paper/` (prices, volume, SPY through today); never touches `data/`. |
+| `make paper-data` | Refresh the paper data dir `data/paper/` (prices, volume, SPY through the last closed session). Replaces the previous snapshot only after the download validates; never touches `data/`. |
 | `make paper-data-check` | Data checks on `data/paper/` against its own manifest. |
 | `make paper-status` | Print and write the paper account summary `results/paper/status.md` (active and recent alerts, last gate, latest run, journal tail). |
 | `make paper-daily` | Scheduled paper day: lock → refresh → data gate → paper day → status → weekly review → rotating backup (keeps the newest `paper_trading.backup_keep` = 10). Exit 0 ok/skipped, 1 failed, 2 blocked, 3 locked. |
@@ -282,10 +282,14 @@ Paper and research data are separate directories:
 
 The paper dir is `paper_trading.data_dir` in `config/platform_config.json`, overridable with
 `$PAPER_DATA_DIR` or `--data-dir`; it is refused if it resolves to `data/`. Each paper refresh
-writes `data/paper/data_manifest.json` (SHA-256 of the three dated inputs), so the gate's manifest
-check catches a paper file edited after the refresh, and every run's `run.json` records the files
-and dates the gate saw. The risk-report step still summarises the research backtest from `data/`
-(read-only).
+downloads into a staging folder and replaces the current price, volume, benchmark and manifest
+files only after the panel is non-empty and aligned, the last date is the last NYSE session
+before the exclusive end, and already-held history is still present. A failed or truncated
+Yahoo response leaves the previous snapshot in place; derived feature files are not touched.
+The new snapshot writes `data/paper/data_manifest.json` (SHA-256 of the three dated inputs),
+so the gate's manifest check catches a paper file edited after the refresh, and every run's
+`run.json` records the files and dates the gate saw. The risk-report step still summarises
+the research backtest from `data/` (read-only).
 
 Run the daily workflow (full refresh of price, volume and SPY through today into `data/paper/`
 with `src/data_loader.py`, then the paper day):
@@ -343,7 +347,9 @@ Scheduling examples (cron and a systemd timer; not installed by this repo) are i
 journal NAV and recent alerts (read-only).
 
 Paper refreshes run yfinance without its progress bar and do not request excluded symbols
-(BK), so paper logs show one summary line per file instead of the download bar.
+(BK), so paper logs show one summary line per file instead of the download bar. Staging
+folders (`.refresh-*` under the paper dir) are removed after each attempt, including leftovers
+from a crashed run.
 
 `git status` stays clean: the refresh, features and ML dataset all go to `data/paper/`, so
 `make research` keeps reading the checked-in snapshot without any restore step. Offline demo:
@@ -1033,7 +1039,7 @@ pytest -q
 instead of piling up (a third-party warning that cannot be fixed gets a narrow, commented
 `ignore:` line there). Pytest also blocks outbound internet access (socket, urllib, requests,
 and curl_cffi / yfinance) so a test cannot quietly download prices; loopback and Unix sockets
-still work. Status on 2026-11-24: 358 passed, 0 warnings; `python
+still work. Status on 2026-11-27: 363 passed, 0 warnings; `python
 scripts/run_smoke_tests.py` also runs the suite plus the doc-metric check.
 
 ## Recruiting-Relevant Skills Demonstrated
