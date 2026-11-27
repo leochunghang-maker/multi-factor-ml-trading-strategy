@@ -286,10 +286,14 @@ downloads into a staging folder and replaces the current price, volume, benchmar
 files only after the panel is non-empty and aligned, the last date is the last NYSE session
 before the exclusive end, and already-held history is still present. A failed or truncated
 Yahoo response leaves the previous snapshot in place; derived feature files are not touched.
-The new snapshot writes `data/paper/data_manifest.json` (SHA-256 of the three dated inputs),
-so the gate's manifest check catches a paper file edited after the refresh, and every run's
-`run.json` records the files and dates the gate saw. The risk-report step still summarises
-the research backtest from `data/` (read-only).
+The same refresh writes a paper-local membership file (`data/paper/universe_sp500_membership.csv`)
+by keeping the checked-in research history and appending later month-end S&P 500 snapshots from
+the same constituents source; a fetch failure keeps the last good paper (or research) copy.
+The research membership file under `data/` is never rewritten. Signals and the data gate use the
+paper-local file when it exists. The new snapshot writes `data/paper/data_manifest.json` (SHA-256
+of the three dated inputs), so the gate's manifest check catches a paper file edited after the
+refresh, and every run's `run.json` records the files and dates the gate saw. The risk-report
+step still summarises the research backtest from `data/` (read-only).
 
 Run the daily workflow (full refresh of price, volume and SPY through today into `data/paper/`
 with `src/data_loader.py`, then the paper day):
@@ -903,6 +907,7 @@ smoke-test line (FAIL on any ERROR, WARNING otherwise).
   closures (e.g. 2018-12-05, 2025-01-09) are not counted; early closes count as trading days.
   No new dependency; a test checks that the calendar reproduces every date in the checked-in
   price history (2018-01-02 → 2026-10-30). `"weekdays"` restores plain weekday counting.
+  Membership freshness is measured against the last calendar month-end on or before the same as-of date (`membership_stale_severity`, WARNING). The frozen research file is current through 2026-11-01, so it stays clean when measured against the snapshot end; paper checks use the last closed session and the paper-local copy when present.
   `python src/check_data.py --paper` runs the same checks on `data/paper/` against its own
   manifest.
 - **Closed sessions only:** "today" means the latest NYSE session whose New York close
@@ -957,6 +962,10 @@ daily moves of 25–38% (none split-like; not verified against news).
   (`src/data/universe.py`): valid price + `min_universe_history_days` (63) + month-end **S&P 500**
   membership from `data/universe_sp500_membership.csv` (S&P 100 subset proxy; source metadata in
   `data/universe_membership_source.json`). Official S&P 100 PIT constituents are not used.
+  Research membership is frozen with the snapshot (last date 2026-11-01). The daily paper
+  refresh keeps a paper-local copy under `data/paper/` and appends later month-ends; if that
+  copy lags the last month-end on or before the as-of date, data checks raise
+  `membership_stale_severity` (WARNING) instead of silently carrying the last snapshot forward.
 - Empty Yahoo columns (e.g. failed downloads) are dropped at data load; trailing all-NaN stretches
   after a last valid print are treated as delisted for eligibility.
 - Yahoo Finance data is convenient for research but not institutional-grade market data.
@@ -1039,7 +1048,7 @@ pytest -q
 instead of piling up (a third-party warning that cannot be fixed gets a narrow, commented
 `ignore:` line there). Pytest also blocks outbound internet access (socket, urllib, requests,
 and curl_cffi / yfinance) so a test cannot quietly download prices; loopback and Unix sockets
-still work. Status on 2026-11-27: 363 passed, 0 warnings; `python
+still work. Status on 2026-11-28: 370 passed, 0 warnings; `python
 scripts/run_smoke_tests.py` also runs the suite plus the doc-metric check.
 
 ## Recruiting-Relevant Skills Demonstrated

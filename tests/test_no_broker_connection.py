@@ -2,10 +2,11 @@
 
 Static AST/text scan of ``src/``, ``scripts/`` and ``dashboard/``, no code is run.
 Fails if any module imports a broker SDK or a general HTTP client, or names a
-broker/order endpoint. Prices come from yfinance in ``src/data_loader.py`` only, which is
-the only allowed network dependency; orders are filled by the local simulated
-broker and never leave the machine. Other modules must use the local files
-that loader writes, never import yfinance themselves.
+broker/order endpoint. Prices come from yfinance in ``src/data_loader.py`` only; that
+module may also use ``urllib.request`` to refresh the paper-local membership file.
+These are the only allowed network dependencies; orders are filled by the local
+simulated broker and never leave the machine. Other modules must use the local files
+that loader writes, never import yfinance or an HTTP client themselves.
 """
 
 import ast
@@ -68,12 +69,20 @@ def test_scan_covers_the_code() -> None:
     assert "dashboard/app.py" in files
 
 
+# urllib.request is allowed only in the data loader (paper membership refresh).
+ALLOWED_HTTP_IMPORTS = {
+    "src/data_loader.py": {"urllib.request"},
+}
+
+
 def test_no_broker_sdk_or_http_client_imports() -> None:
     offenders = []
     for path in _python_files():
+        relative = str(path.relative_to(ROOT))
+        allowed = ALLOWED_HTTP_IMPORTS.get(relative, set())
         for module in sorted(_imported_modules(ast.parse(path.read_text()))):
-            if _is_forbidden(module):
-                offenders.append(f"{path.relative_to(ROOT)}: {module}")
+            if _is_forbidden(module) and module not in allowed:
+                offenders.append(f"{relative}: {module}")
     assert not offenders, "broker/HTTP client imports in a local-only platform:\n" + "\n".join(offenders)
 
 
@@ -119,3 +128,5 @@ def test_detector_flags_broker_code() -> None:
         "alpaca.trading.TradingClient",
     }
     assert FORBIDDEN_TEXT.search('BASE = "https://paper-api.alpaca.markets/v2"')
+    assert not FORBIDDEN_TEXT.search("local simulated broker")
+

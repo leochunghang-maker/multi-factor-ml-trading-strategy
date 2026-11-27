@@ -161,3 +161,37 @@ def test_vectorized_membership_mask_matches_reference_on_checked_in_data() -> No
     pd.testing.assert_frame_equal(fast, _reference_membership_mask(index, tickers, membership))
     early = pd.DatetimeIndex([membership["date"].min() - pd.Timedelta(days=1)])
     assert not build_membership_mask(early, tickers, membership=membership).to_numpy().any()
+
+def test_required_membership_month_end_and_month_ends_after() -> None:
+    from src.data.universe import month_ends_after, required_membership_month_end
+
+    assert required_membership_month_end("2026-10-30").date().isoformat() == "2026-09-30"
+    assert required_membership_month_end("2026-11-30").date().isoformat() == "2026-10-31"
+    assert required_membership_month_end("2026-12-01").date().isoformat() == "2026-11-30"
+    ends = [d.date().isoformat() for d in month_ends_after("2026-11-01", "2026-12-31")]
+    assert ends == ["2026-11-30", "2026-12-31"]
+    assert month_ends_after("2026-11-01", "2026-11-27") == []
+
+
+def test_parse_and_append_month_end_membership(tmp_path) -> None:
+    from src.data.universe import (
+        append_month_end_membership,
+        parse_historical_components,
+        resolve_membership_path,
+        write_membership_table,
+    )
+    from src.data.paths import DataPaths
+
+    csv = 'date,tickers\n2026-10-31,"AAPL,MSFT,FB"\n2026-11-30,"AAPL,MSFT,NVDA"\n'
+    hist = parse_historical_components(csv, ["AAPL", "MSFT", "META", "NVDA"])
+    assert set(hist.loc[hist["date"] == "2026-10-31", "ticker"]) == {"AAPL", "MSFT", "META"}
+    base = hist[hist["date"] == "2026-10-31"].copy()
+    out = append_month_end_membership(base, hist, "2026-11-30")
+    november = set(out.loc[out["date"] == "2026-11-30", "ticker"])
+    assert november == {"AAPL", "MSFT", "NVDA"}
+    assert (out["date"] == "2026-10-31").any()
+    dest = tmp_path / "universe_sp500_membership.csv"
+    write_membership_table(dest, out)
+    paper = DataPaths.paper(tmp_path)
+    assert resolve_membership_path(paper, root=tmp_path) == str(dest)
+

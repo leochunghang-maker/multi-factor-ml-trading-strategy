@@ -173,3 +173,24 @@ def test_health_surfaces_data_findings() -> None:
     assert summary["status"] in {"WARNING", "ERROR"}
     assert any(f.check == "data_freshness" for f in findings)
     assert all(f.severity in {"ERROR", "WARNING"} for f in findings)
+
+def test_membership_freshness_ok_then_stale(tmp_path) -> None:
+    from src.data.quality import check_membership_freshness
+    from src.data.universe import write_membership_table
+
+    path = tmp_path / "universe_sp500_membership.csv"
+    write_membership_table(path, pd.DataFrame({"date": ["2026-11-01", "2026-11-01"], "ticker": ["AAPL", "MSFT"]}))
+    assert check_membership_freshness(path, "2026-10-30", S) == []
+    assert check_membership_freshness(path, "2026-11-27", S) == []
+    stale = check_membership_freshness(path, "2026-12-01", S)
+    assert len(stale) == 1 and stale[0].check == "membership" and stale[0].severity == "WARNING"
+    assert "2026-11-30" in stale[0].message
+    assert check_membership_freshness(tmp_path / "missing.csv", "2026-12-01", S) == []
+
+
+def test_checked_in_membership_is_fresh_for_the_research_snapshot() -> None:
+    from src.data.quality import check_membership_freshness
+    from src.config import UNIVERSE_MEMBERSHIP_PATH
+
+    assert check_membership_freshness(UNIVERSE_MEMBERSHIP_PATH, "2026-10-30", S) == []
+

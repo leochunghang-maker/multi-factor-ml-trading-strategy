@@ -6,6 +6,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 import json
 import os
 import shutil
+import urllib.request
 import uuid
 from datetime import datetime, timezone
 
@@ -20,13 +21,27 @@ from src.config import (
     VOLUME_DATA_PATH,
 )
 from src.data.paths import DataPaths
-from src.data.universe import drop_empty_price_columns
+from src.data.universe import (
+    append_month_end_membership,
+    drop_empty_price_columns,
+    load_membership_table,
+    parse_historical_components,
+    write_membership_table,
+)
 
 # Staging / rollback folders for paper refreshes. They live under the paper dir
 # and are removed after each attempt (including leftover dirs from a crashed run).
 _PAPER_REFRESH_PREFIX = ".refresh-"
 _PAPER_INPUT_ATTRS = ("price_data", "volume_data", "benchmark_prices", "benchmark_source")
-_PAPER_SNAPSHOT_ATTRS = _PAPER_INPUT_ATTRS + ("manifest",)
+_PAPER_MEMBERSHIP_ATTRS = ("universe_membership", "universe_membership_source")
+_PAPER_SNAPSHOT_ATTRS = _PAPER_INPUT_ATTRS + ("manifest",) + _PAPER_MEMBERSHIP_ATTRS
+
+# Same Wikipedia-derived source recorded in data/universe_membership_source.json.
+# Used only for the paper-local copy; the checked-in research membership file is never rewritten.
+MEMBERSHIP_COMPONENTS_URL = (
+    "https://raw.githubusercontent.com/chinobing/historical_sp500_constituents"
+    "/main/sp_500_historical_components.csv"
+)
 
 
 def _download(tickers=TICKERS, start=START_DATE, end=END_DATE, progress: bool = True) -> pd.DataFrame:
@@ -159,6 +174,139 @@ def download_benchmark_data(
     Path(paths.benchmark_source).write_text(json.dumps(source, indent=2) + "\n")
     print(f"Saved benchmark prices to {paths.benchmark_prices}")
     return close
+
+
+def fetch_historical_components(url: str = MEMBERSHIP_COMPONENTS_URL, timeout: int = 30) -> str:
+    """Download the upstream historical S&P 500 constituents CSV (paper path only)."""
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "multi-factor-ml-trading-strategy paper-membership-refresh"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        raw = response.read()
+    if not raw:
+        raise ValueError("historical components file is empty")
+    if len(raw) > 50_000_000:
+        raise ValueError("historical components file is unexpectedly large")
+    return raw.decode("utf-8")
+
+def _load_membership_base(paths: DataPaths) -> pd.DataFrame:
+    paper = Path(paths.universe_membership)
+    if paper.is_file() and paper.stat().st_size > 0:
+        return load_membership_table(paper)
+    research = Path(DataPaths.research().universe_membership)
+    if research.is_file():
+        return load_membership_table(research)
+    return pd.DataFrame(columns=["date", "ticker"])
+
+def _copy_membership_base(dest: DataPaths, previous: DataPaths) -> None:
+    """Copy the last good paper (or research) membership files into dest."""
+    Path(dest.root).mkdir(parents=True, exist_ok=True)
+    pairs = [
+        (previous.universe_membership, dest.universe_membership),
+        (previous.universe_membership_source, dest.universe_membership_source),
+    ]
+    research = DataPaths.research()
+    fallback = {
+        previous.universe_membership: research.universe_membership,
+        previous.universe_membership_source: research.universe_membership_source,
+    }
+    for src_name, dst_name in pairs:
+        src = Path(src_name)
+        if not src.is_file():
+            src = Path(fallback[src_name])
+        if src.is_file():
+            Path(dst_name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst_name)
+
+
+def stage_paper_membership(staging: DataPaths, previous: DataPaths, end: str, fetch=None) -> str:
+    """Write a paper-local membership snapshot into the staging dir.
+
+    Starts from the current paper copy (or the research file) and appends
+    calendar month-ends through the last NYSE session before exclusive end.
+    A fetch failure copies the base file so the price snapshot can still install.
+    """
+    from src.data.market_calendar import previous_trading_day
+
+    base = _load_membership_base(previous)
+    as_of = pd.Timestamp(previous_trading_day(end)).normalize()
+    status = "kept"
+    try:
+        fetcher = fetch if fetch is not None else fetch_historical_components
+        historical = parse_historical_components(fetcher(), TICKERS)
+        frame = append_month_end_membership(base, historical, as_of)
+        status = "refreshed"
+    except Exception as exc:
+        print(f"Paper membership refresh skipped ({exc}); keeping the last available snapshot.")
+        frame = base
+        status = "kept"
+    if frame.empty:
+        _copy_membership_base(staging, previous)
+        return "missing" if not Path(staging.universe_membership).is_file() else status
+    write_membership_table(staging.universe_membership, frame)
+    last = pd.Timestamp(frame["date"].max()).date()
+    if base is not None and not base.empty:
+        new_ends = sorted(
+            {pd.Timestamp(d).date().isoformat() for d in frame["date"]}
+            - {pd.Timestamp(d).date().isoformat() for d in base["date"]}
+        )
+        base_label = "paper copy" if Path(previous.universe_membership).is_file() else "checked-in research membership"
+    else:
+        new_ends = sorted({pd.Timestamp(d).date().isoformat() for d in frame["date"]})
+        base_label = "none"
+    source = {
+        "description": "Paper-local month-end S&P 500 membership for the platform ticker list. "
+                       "The checked-in research file under data/ is not modified.",
+        "source_repo": "https://github.com/chinobing/historical_sp500_constituents",
+        "source_file": "sp_500_historical_components.csv",
+        "source_license_note": "Upstream MIT license; Wikipedia-derived historical constituents.",
+        "base": base_label,
+        "through": str(as_of.date()),
+        "last_snapshot": str(last),
+        "appended_month_ends": new_ends,
+        "rows": int(len(frame)),
+        "tickers": int(frame["ticker"].nunique()),
+        "status": status,
+        "refreshed_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    Path(staging.universe_membership_source).parent.mkdir(parents=True, exist_ok=True)
+    Path(staging.universe_membership_source).write_text(json.dumps(source, indent=2, sort_keys=True) + "\n")
+    return status
+
+
+def _validate_paper_membership(staging: DataPaths, previous: DataPaths) -> None:
+    staged = Path(staging.universe_membership)
+    if not staged.is_file():
+        return
+    new = load_membership_table(staged)
+    kept = "the previous paper snapshot was left unchanged"
+    if new.empty:
+        raise ValueError(f"paper membership refresh produced an empty membership file; {kept}")
+    if not {"date", "ticker"}.issubset(set(new.columns)):
+        raise ValueError(f"paper membership refresh is missing date/ticker columns; {kept}")
+    prev = Path(previous.universe_membership)
+    if prev.is_file() and prev.stat().st_size > 0:
+        old = load_membership_table(prev)
+        if not old.empty:
+            old_keys = set(zip(pd.to_datetime(old["date"]).dt.normalize(), old["ticker"].map(str)))
+            new_keys = set(zip(pd.to_datetime(new["date"]).dt.normalize(), new["ticker"].map(str)))
+            missing = old_keys - new_keys
+            if missing:
+                raise ValueError(
+                    f"paper membership refresh dropped {len(missing)} already-held membership row(s); {kept}"
+                )
+
+def _install_paper_membership(staging: DataPaths, dest: DataPaths) -> None:
+    Path(dest.root).mkdir(parents=True, exist_ok=True)
+    for name in _PAPER_MEMBERSHIP_ATTRS:
+        src = Path(getattr(staging, name))
+        if not src.is_file():
+            continue
+        target = Path(getattr(dest, name))
+        tmp = target.with_name("." + target.name + "." + uuid.uuid4().hex + ".install")
+        shutil.copy2(src, tmp)
+        os.replace(tmp, target)
 
 
 def write_data_manifest(paths: DataPaths, note: str) -> dict:
@@ -308,9 +456,16 @@ def refresh_paper_data(end: str | None = "today", paths: DataPaths | None = None
         download_price_data(end=end, paths=staging, progress=False, skip_excluded=True)
         download_benchmark_data(end=end, paths=staging, progress=False)
         _validate_paper_refresh(staging, paths, end)
+        try:
+            stage_paper_membership(staging, paths, end)
+            _validate_paper_membership(staging, paths)
+        except Exception as exc:
+            print(f"Paper membership not updated ({exc}); keeping the last available snapshot.")
+            _copy_membership_base(staging, paths)
         _backup_paper_snapshot(paths, backup_root)
         try:
             _install_paper_inputs(staging, paths)
+            _install_paper_membership(staging, paths)
             write_data_manifest(paths, f"yfinance download, end exclusive {end}")
         except Exception:
             _restore_paper_snapshot(backup_root)
@@ -326,7 +481,10 @@ def seed_paper_data_from_research(paths: DataPaths | None = None) -> DataPaths:
     paths = paths or DataPaths.paper()
     research = DataPaths.research()
     Path(paths.root).mkdir(parents=True, exist_ok=True)
-    for name in ("price_data", "volume_data", "benchmark_prices", "benchmark_source"):
+    for name in (
+        "price_data", "volume_data", "benchmark_prices", "benchmark_source",
+        "universe_membership", "universe_membership_source",
+    ):
         src, dst = getattr(research, name), getattr(paths, name)
         if Path(src).exists():
             shutil.copyfile(src, dst)

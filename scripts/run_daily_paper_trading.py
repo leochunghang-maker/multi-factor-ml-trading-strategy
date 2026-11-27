@@ -289,7 +289,7 @@ def run_workflow(args: argparse.Namespace) -> int:
     run_step(results, 4, "Feature generation", lambda: generate_features(data_paths))
     signals = run_step(
         results, 5, "Signal generation",
-        lambda: generate_live_signals(prices=local_prices, dataset_path=data_paths.ml_dataset),
+        lambda: generate_live_signals(prices=local_prices, dataset_path=data_paths.ml_dataset, data_paths=data_paths),
     )
     print(f"   generated signals: {len(signals)} rows")
 

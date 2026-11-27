@@ -1,6 +1,6 @@
 # Change Summary
 
-What changed in this repository, grouped by area, as of `main` on 2026-11-27. Commit hashes are
+What changed in this repository, grouped by area, as of `main` on 2026-11-28. Commit hashes are
 given so each item can be checked. Current performance numbers live in `README.md` and
 `reports/quant_research_report.md`. They are checked against the result files by
 `python src/check_doc_metrics.py`, so this file does not repeat them.
@@ -160,6 +160,16 @@ trading is local and simulated only. There is no live-money execution path.
   files are non-empty and aligned, that the last date is the last NYSE session before the exclusive
   end, and that already-held history is still present, then replaces the previous snapshot (rolling
   back if the install itself fails). Derived feature files are not touched. Research numbers are
+  unaffected.
+
+- **Paper membership stays current without touching research:** the daily paper path used the
+  frozen `data/universe_sp500_membership.csv` (last snapshot 2026-11-01) for eligibility, and
+  after the next month-end that file would be carried forward with no warning. `make paper-data`
+  now writes a paper-local copy under `data/paper/`, keeps the research history, and appends later
+  month-end S&P 500 snapshots from the same constituents source (a fetch failure leaves the last
+  good copy in place). Live signals use that file when it exists. Data checks warn when the last
+  snapshot is before the last month-end on or before the as-of date; research is still measured
+  against its frozen end, so the committed data-quality report is unchanged. Research numbers are
   unaffected.
 
 ## Original structural refactor (May 2026)

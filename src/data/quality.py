@@ -48,6 +48,7 @@ DEFAULT_DATA_CHECKS: dict[str, Any] = {
     "hash_mismatch_severity": "WARNING",
     "excluded_symbols": {},
     "paper_stale_severity": "ERROR",
+    "membership_stale_severity": "WARNING",
     "session_settle_minutes": 30,
     "incomplete_session_severity": "ERROR",
     "report_path": "reports/data_quality_report.md",
@@ -464,6 +465,43 @@ def check_manifest(
 # ------------------------------------------------------------------------ driver
 
 
+
+def check_membership_freshness(path: str | Path, as_of, settings: dict[str, Any] | None = None) -> list[DataFinding]:
+    """Warn when the last membership snapshot is before the required month-end.
+
+    Research membership is measured against the same as-of date as the other
+    snapshot checks (the frozen research end, not the wall clock). Paper checks
+    use the last closed session, so a paper-local copy that is not refreshed
+    after a new month-end becomes visible instead of silently carrying forward.
+    A missing file is skipped: membership is optional on a bare temporary dir.
+    """
+    settings = settings or {}
+    membership_path = Path(path)
+    if not membership_path.is_file():
+        return []
+    from src.data.universe import load_membership_table, required_membership_month_end
+
+    membership = load_membership_table(membership_path)
+    if membership.empty:
+        return [DataFinding(
+            "WARNING", "membership", str(membership_path),
+            "membership file is empty; index-membership eligibility will exclude every name",
+        )]
+    last = pd.Timestamp(membership["date"].max()).tz_localize(None).normalize()
+    required = required_membership_month_end(as_of)
+    if last >= required:
+        return []
+    severity = str(settings.get("membership_stale_severity", "WARNING"))
+    as_of_date = pd.Timestamp(as_of).date()
+    return [DataFinding(
+        severity, "membership", str(membership_path),
+        f"last snapshot is {last.date()} but the last month-end on or before {as_of_date} is "
+        f"{required.date()}; eligibility will carry the last snapshot forward. "
+        "For paper trading, make paper-data refreshes a paper-local copy "
+        "(research data/universe_sp500_membership.csv stays frozen).",
+    )]
+
+
 def run_data_checks(
     as_of=None,
     config: dict[str, Any] | None = None,
@@ -527,6 +565,10 @@ def run_data_checks(
     findings += check_panel_quality(frames["benchmark_prices"], "benchmark_prices", settings, kind="price")
     findings += check_volume_vs_price(frames["price_data"], frames["volume_data"])
     findings += check_manifest(settings["manifest_path"], list(settings["manifest_files"]), settings, root=root)
+    from src.data.universe import resolve_membership_path
+
+    membership_path = resolve_membership_path(data_paths, root=root)
+    findings += check_membership_freshness(membership_path, as_of, settings)
     summary = {
         "as_of": str(as_of.date()),
         "last_closed_session": str(last_session.date()) if last_session is not None else None,

@@ -78,6 +78,14 @@ class DataPaths:
             return "reports/data_quality_report.md"
         return self._file("data_quality_report.md")
 
+    @property
+    def universe_membership(self) -> str:
+        return self._file("universe_sp500_membership.csv")
+
+    @property
+    def universe_membership_source(self) -> str:
+        return self._file("universe_membership_source.json")
+
     def dated_inputs(self) -> dict[str, str]:
         return {
             "price_data": self.price_data,

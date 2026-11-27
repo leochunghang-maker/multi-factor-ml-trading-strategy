@@ -26,7 +26,7 @@ from src.data.market_calendar import last_completed_session
 from src.data.paths import DataPaths
 from src.data.quality import check_incomplete_session, data_check_settings
 from src.data.required import require_file, run_cli
-from src.data.universe import build_eligibility_mask, eligible_tickers_on_date
+from src.data.universe import build_eligibility_mask, eligible_tickers_on_date, resolve_membership_path
 from src.models.ml import train_random_forest
 
 
@@ -245,6 +245,8 @@ def generate_live_signals(
     prices: pd.DataFrame | None = None,
     dataset_path: str | None = None,
     now=None,
+    data_paths: DataPaths | None = None,
+    membership_path: str | None = None,
 ) -> pd.DataFrame:
     """Build the paper-trading signal file from local prices only.
 
@@ -255,14 +257,17 @@ def generate_live_signals(
     Rows dated after the last closed NYSE session are rejected.
     """
     if prices is None:
-        paths = resolve_standalone_data_paths()
+        paths = data_paths or resolve_standalone_data_paths()
         prices = load_price_data(paths.price_data)
         if dataset_path is None:
             dataset_path = paths.ml_dataset
+        data_paths = paths
     elif dataset_path is None:
         dataset_path = ML_DATASET_PATH
     reject_incomplete_session_prices(prices, now=now)
-    eligibility = build_eligibility_mask(prices)
+    if membership_path is None:
+        membership_path = resolve_membership_path(data_paths)
+    eligibility = build_eligibility_mask(prices, membership_path=membership_path)
     latest_date = prices.dropna(how="all").index.max()
     allowed = set(eligible_tickers_on_date(eligibility, latest_date))
     features = calculate_live_features(prices)

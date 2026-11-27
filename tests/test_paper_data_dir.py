@@ -29,6 +29,8 @@ def test_research_paths_are_the_config_constants() -> None:
         c.PRICE_DATA_PATH, c.VOLUME_DATA_PATH, c.BENCHMARK_PRICES_PATH, c.BENCHMARK_SOURCE_PATH)
     assert (r.daily_returns, r.momentum, r.mean_reversion, r.forward_returns, r.ml_dataset) == (
         c.DAILY_RETURNS_PATH, c.MOMENTUM_PATH, c.MEAN_REVERSION_PATH, c.FORWARD_RETURNS_PATH, c.ML_DATASET_PATH)
+    assert (r.universe_membership, r.universe_membership_source) == (
+        c.UNIVERSE_MEMBERSHIP_PATH, c.UNIVERSE_MEMBERSHIP_SOURCE_PATH)
     assert r.quality_report == "reports/data_quality_report.md"
 
 
@@ -189,3 +191,53 @@ def test_paper_refresh_cleans_leftover_staging(tmp_path, monkeypatch) -> None:
     loader.refresh_paper_data(end="2026-11-07", paths=DataPaths.paper(dest))
     assert not leftover.exists()
     _assert_no_refresh_dirs(dest)
+
+def test_seed_from_research_copies_membership(tmp_path) -> None:
+    paths = loader.seed_paper_data_from_research(DataPaths.paper(tmp_path / "paper"))
+    assert Path(paths.universe_membership).read_bytes() == Path(c.UNIVERSE_MEMBERSHIP_PATH).read_bytes()
+    assert Path(paths.universe_membership_source).is_file()
+
+
+def test_paper_refresh_appends_membership_month_ends(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(loader, "_download", _fake_download)
+
+    def fake_fetch():
+        # After the research snapshot's last date (2026-11-01), AAPL leaves at November month-end.
+        return 'date,tickers\n2026-10-31,"AAPL,MSFT"\n2026-11-30,"MSFT,NVDA"\n'
+
+    monkeypatch.setattr(loader, "fetch_historical_components", fake_fetch)
+    dest = DataPaths.paper(tmp_path / "paper")
+    # Exclusive end 2026-12-02 -> last session 2026-12-01, required new month-end 2026-11-30.
+    loader.refresh_paper_data(end="2026-12-02", paths=dest)
+    members = pd.read_csv(dest.universe_membership, parse_dates=["date"])
+    november = set(members.loc[members["date"] == "2026-11-30", "ticker"])
+    # Upstream November snapshot is merged onto the research base; the test fixture
+    # only names a few tickers, so just assert the file was extended past 2026-11-01.
+    assert members["date"].max() == pd.Timestamp("2026-11-30")
+    source = json.loads(Path(dest.universe_membership_source).read_text())
+    assert "2026-11-30" in source["appended_month_ends"]
+    assert source["status"] == "refreshed"
+    # Research file is untouched.
+    research = pd.read_csv(c.UNIVERSE_MEMBERSHIP_PATH, parse_dates=["date"])
+    assert research["date"].max() == pd.Timestamp("2026-11-01")
+    findings, _ = run_data_checks(as_of="2026-12-01", data_paths=dest)
+    assert not [f for f in findings if f.check == "membership"]
+
+
+def test_paper_refresh_keeps_membership_if_fetch_fails(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(loader, "_download", _fake_download)
+
+    def boom():
+        raise RuntimeError("constituents unavailable")
+
+    monkeypatch.setattr(loader, "fetch_historical_components", boom)
+    dest = DataPaths.paper(tmp_path / "paper")
+    loader.refresh_paper_data(end="2026-11-07", paths=dest)
+    # Fetch failed, so the research snapshot is copied through (no new month-end yet anyway).
+    members = pd.read_csv(dest.universe_membership, parse_dates=["date"])
+    assert members["date"].max() == pd.Timestamp("2026-11-01")
+    before = Path(dest.universe_membership).read_bytes()
+    loader.refresh_paper_data(end="2026-12-02", paths=dest)
+    assert Path(dest.universe_membership).read_bytes() == before
+    assert Path(dest.price_data).is_file()
+

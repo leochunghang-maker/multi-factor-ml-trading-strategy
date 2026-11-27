@@ -143,9 +143,10 @@
       "BK": "Decision 2026-11-09: keep excluded. The checked-in snapshot has an all-NaN BK column (failed Yahoo download), so BK was never eligible in any committed result. Re-downloading it would change the research universe and results, i.e. a new trial. data_loader.py blanks excluded symbols after every download so refreshes keep the same universe."
     },
     "paper_stale_severity": "ERROR",
+    "membership_stale_severity": "WARNING",
     "report_path": "reports/data_quality_report.md",
     "research_snapshot_end": "2026-11-01",
-    "note": "Freshness counts NYSE trading days (weekends and NYSE holidays excluded) after the last date up to the as-of date: the last closed NYSE session, or for the research data/ the last session before research_snapshot_end (must equal src/config.py END_DATE; the paper data dir and paper gate always use the last closed session). Misalignment compares price, volume and benchmark date ranges and index sets against price_data.csv. Hashes are SHA-256 of the file with CRLF normalised to LF; update the manifest only after reviewing a re-download (python src/check_data.py --update-manifest)."
+    "note": "Freshness counts NYSE trading days (weekends and NYSE holidays excluded) after the last date up to the as-of date: the last closed NYSE session, or for the research data/ the last session before research_snapshot_end (must equal src/config.py END_DATE; the paper data dir and paper gate always use the last closed session). Membership freshness is measured against the last calendar month-end on or before that as-of date (membership_stale_severity, WARNING); the research file is frozen, and make paper-data writes a paper-local copy under data/paper/. Misalignment compares price, volume and benchmark date ranges and index sets against price_data.csv. Hashes are SHA-256 of the file with CRLF normalised to LF; update the manifest only after reviewing a re-download (python src/check_data.py --update-manifest)."
   },
   "significance": {
     "trial_log_path": "research/trial_log.csv",

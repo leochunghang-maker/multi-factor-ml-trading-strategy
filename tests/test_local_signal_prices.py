@@ -91,7 +91,7 @@ def test_generate_live_signals_without_prices_does_not_download(tmp_path, monkey
         {"AAA": [1.0]}, index=pd.to_datetime(["2026-10-30"])
     ))
     monkeypatch.setattr(live, "reject_incomplete_session_prices", lambda *args, **kwargs: None)
-    monkeypatch.setattr(live, "build_eligibility_mask", lambda prices: pd.DataFrame(True, index=prices.index, columns=prices.columns))
+    monkeypatch.setattr(live, "build_eligibility_mask", lambda prices, **kwargs: pd.DataFrame(True, index=prices.index, columns=prices.columns))
     monkeypatch.setattr(live, "eligible_tickers_on_date", lambda mask, date: list(mask.columns))
     features = pd.DataFrame(
         {
